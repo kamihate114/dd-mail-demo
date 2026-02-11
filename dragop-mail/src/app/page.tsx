@@ -864,6 +864,9 @@ export default function Home() {
       const data = await callAiApi({
         step: 3,
         emailContext: aiState.emailContext!,
+        step1Result: aiState.step1Result!,
+        selectedAction: aiState.selectedAction!,
+        step2Result: aiState.step2Result!,
         editedDraft,
       });
       if (data.step3) {
@@ -873,7 +876,7 @@ export default function Home() {
       const msg = err instanceof Error ? err.message : String(err);
       setAiState((prev) => ({ ...prev, step: "step2", error: msg }));
     }
-  }, [callAiApi, aiState.emailContext]);
+  }, [callAiApi, aiState.emailContext, aiState.step1Result, aiState.selectedAction, aiState.step2Result]);
 
   const handleAiAddTodo = useCallback((candidate: { text: string; notes?: string }) => {
     handleAddTodo(candidate.text);

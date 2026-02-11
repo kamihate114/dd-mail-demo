@@ -10,29 +10,77 @@ import {
 } from "@/lib/ai-types";
 import {
   SYSTEM_PROMPT,
-  buildStep1UserMessage,
-  buildStep2UserMessage,
-  buildStep3UserMessage,
+  buildEmailContextMessage,
+  STEP1_INSTRUCTION,
+  buildStep2Instruction,
+  buildStep3Instruction,
 } from "@/lib/ai-prompts";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-// GPT-5 reasoning models — use max_completion_tokens & reasoning_effort
-// temperature は非対応。max_tokens ではなく max_completion_tokens を使用。
-const MODEL_MINI = "gpt-5-mini";
-const MODEL_NANO = "gpt-5-nano"; // GPT-5 nano - fastest and most cost-efficient
+// GPT-5 mini — 全ステップ共通
+const MODEL = "gpt-5-mini";
+
+type Msg = { role: "system" | "user" | "assistant"; content: string };
 
 function stripCodeFence(text: string): string {
   const m = text.match(/```(?:json)?\s*([\s\S]*?)```/);
   return m ? m[1].trim() : text.trim();
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function callGPT5(messages: Array<{ role: string; content: string }>, effort: string, maxTokens: number, model?: string): Promise<string> {
+/**
+ * 会話履歴を組み立てる。
+ *
+ * プロンプトキャッシュが最大限効くよう、先頭部分を全ステップで一致させる：
+ *   [system] SYSTEM_PROMPT           ← 固定（キャッシュ①）
+ *   [user]   元メール情報             ← 固定（キャッシュ②）
+ *   [user]   Step 1 指示              ← Step 1 ではここまで
+ *   [assistant] Step 1 結果 (JSON)    ← Step 2/3 で追加（キャッシュ③）
+ *   [user]   Step 2 指示              ← Step 2 ではここまで
+ *   [assistant] Step 2 結果 (JSON)    ← Step 3 で追加（キャッシュ④）
+ *   [user]   Step 3 指示              ← Step 3 ではここまで
+ */
+function buildMessages(body: AiApiRequest): Msg[] {
+  const { step, emailContext, step1Result, selectedAction, step2Result, editedDraft } = body;
+  const msgs: Msg[] = [];
+
+  // ── 共通プレフィックス（全ステップ同一）──
+  msgs.push({ role: "system", content: SYSTEM_PROMPT });
+  msgs.push({ role: "user", content: buildEmailContextMessage(emailContext) });
+
+  // ── Step 1 ──
+  msgs.push({ role: "user", content: STEP1_INSTRUCTION });
+
+  if (step === 1) return msgs;
+
+  // ── Step 1 → 2: Step 1 の結果を assistant として挿入 ──
+  if (step1Result) {
+    msgs.push({ role: "assistant", content: JSON.stringify(step1Result) });
+  }
+
+  if (selectedAction) {
+    msgs.push({ role: "user", content: buildStep2Instruction(step1Result!, selectedAction) });
+  }
+
+  if (step === 2) return msgs;
+
+  // ── Step 2 → 3: Step 2 の結果を assistant として挿入 ──
+  if (step2Result) {
+    msgs.push({ role: "assistant", content: JSON.stringify(step2Result) });
+  }
+
+  if (editedDraft && step2Result) {
+    msgs.push({ role: "user", content: buildStep3Instruction(step2Result, editedDraft) });
+  }
+
+  return msgs;
+}
+
+async function callGPT(messages: Msg[], effort: string, maxTokens: number): Promise<string> {
   const completion = await openai.chat.completions.create({
-    model: model || MODEL_MINI,
+    model: MODEL,
     response_format: { type: "json_object" },
     messages: messages as Array<OpenAI.Chat.Completions.ChatCompletionMessageParam>,
     reasoning_effort: effort,
@@ -63,15 +111,10 @@ export async function POST(request: NextRequest): Promise<NextResponse<AiApiResp
   }
 
   try {
+    const messages = buildMessages(body);
+
     if (step === 1) {
-      const raw = await callGPT5(
-        [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: buildStep1UserMessage(emailContext) },
-        ],
-        "low",
-        2000,
-      );
+      const raw = await callGPT(messages, "low", 2000);
       const parsed = JSON.parse(stripCodeFence(raw)) as AiStep1Result;
 
       // Ensure exactly 3 actions
@@ -89,40 +132,13 @@ export async function POST(request: NextRequest): Promise<NextResponse<AiApiResp
     }
 
     if (step === 2) {
-      const { selectedAction, step1Result } = body;
-      if (!selectedAction || !step1Result) {
-        return NextResponse.json({ error: "Step 2に必要なパラメータが不足しています。" }, { status: 400 });
-      }
-
-      const raw = await callGPT5(
-        [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: buildStep2UserMessage(emailContext, step1Result, selectedAction) },
-        ],
-        "medium",
-        3000,
-      );
+      const raw = await callGPT(messages, "medium", 3000);
       const parsed = JSON.parse(stripCodeFence(raw)) as AiStep2Result;
-
       return NextResponse.json({ step2: parsed });
     }
 
     if (step === 3) {
-      const { editedDraft } = body;
-      if (!editedDraft) {
-        return NextResponse.json({ error: "Step 3に必要なパラメータが不足しています。" }, { status: 400 });
-      }
-
-      // Step 3は独立して完成メールのみから分析 (GPT-5 nano使用)
-      const raw = await callGPT5(
-        [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: buildStep3UserMessage(editedDraft) },
-        ],
-        "medium",
-        2000,
-        MODEL_NANO,
-      );
+      const raw = await callGPT(messages, "medium", 2000);
       const parsed = JSON.parse(stripCodeFence(raw)) as AiStep3Result;
 
       // Ensure arrays exist
