@@ -16,6 +16,7 @@ interface MsGraphMessage {
   from?: { emailAddress: { name: string; address: string } };
   receivedDateTime: string;
   isRead: boolean;
+  conversationId?: string;
 }
 
 interface MsGraphFolder {
@@ -81,6 +82,7 @@ function msgToEmailItem(msg: MsGraphMessage): EmailItem {
     receivedAt: formatDate(msg.receivedDateTime),
     receivedDate: date.toISOString().split("T")[0],
     unread: !msg.isRead,
+    conversationId: msg.conversationId,
   };
 }
 
@@ -111,7 +113,7 @@ export async function fetchOutlookMessages(
     $top: String(top),
     $skip: String(skip),
     $orderby: "receivedDateTime desc",
-    $select: "id,subject,bodyPreview,body,from,receivedDateTime,isRead",
+    $select: "id,subject,bodyPreview,body,from,receivedDateTime,isRead,conversationId",
   });
 
   const url = `${GRAPH_API}/mailFolders/${encodeURIComponent(folderId)}/messages?${params}`;
@@ -208,4 +210,155 @@ export async function archiveOutlookMessage(accessToken: string, messageId: stri
     },
     body: JSON.stringify({ destinationId: "archive" }),
   });
+}
+
+/* ---------- Compose ---------- */
+
+/**
+ * Send an email via Microsoft Graph API.
+ * If originalMessageId is provided, sends as a reply to that message (threaded).
+ * Otherwise sends as a new message via sendMail.
+ */
+export async function sendOutlookMessage(
+  accessToken: string,
+  to: string,
+  subject: string,
+  body: string,
+  originalMessageId?: string,
+): Promise<void> {
+  if (originalMessageId) {
+    // Create a reply draft from the original message
+    const replyRes = await fetch(`${GRAPH_API}/messages/${originalMessageId}/createReply`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({}),
+    });
+    if (!replyRes.ok) {
+      const text = await replyRes.text().catch(() => "");
+      throw new Error(`Outlook createReply error: ${replyRes.status} ${replyRes.statusText}\n${text}`);
+    }
+    const replyDraft = await replyRes.json();
+    const draftId = replyDraft.id;
+
+    // Update the reply draft with our subject and body
+    const updateRes = await fetch(`${GRAPH_API}/messages/${draftId}`, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        subject,
+        body: { contentType: "Text", content: body },
+      }),
+    });
+    if (!updateRes.ok) {
+      const text = await updateRes.text().catch(() => "");
+      throw new Error(`Outlook update reply error: ${updateRes.status} ${updateRes.statusText}\n${text}`);
+    }
+
+    // Send the reply
+    const sendRes = await fetch(`${GRAPH_API}/messages/${draftId}/send`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!sendRes.ok) {
+      const text = await sendRes.text().catch(() => "");
+      throw new Error(`Outlook send reply error: ${sendRes.status} ${sendRes.statusText}\n${text}`);
+    }
+  } else {
+    // New message (no thread)
+    const res = await fetch(`${GRAPH_API}/sendMail`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        message: {
+          subject,
+          body: { contentType: "Text", content: body },
+          toRecipients: [{ emailAddress: { address: to } }],
+        },
+        saveToSentItems: true,
+      }),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`Outlook send error: ${res.status} ${res.statusText}\n${text}`);
+    }
+  }
+}
+
+/**
+ * Create a draft email via Microsoft Graph API.
+ * If originalMessageId is provided, creates a reply draft (threaded).
+ */
+export async function createOutlookDraft(
+  accessToken: string,
+  to: string,
+  subject: string,
+  body: string,
+  originalMessageId?: string,
+): Promise<{ id: string }> {
+  if (originalMessageId) {
+    // Create reply draft from original message
+    const replyRes = await fetch(`${GRAPH_API}/messages/${originalMessageId}/createReply`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({}),
+    });
+    if (!replyRes.ok) {
+      const text = await replyRes.text().catch(() => "");
+      throw new Error(`Outlook createReply draft error: ${replyRes.status} ${replyRes.statusText}\n${text}`);
+    }
+    const replyDraft = await replyRes.json();
+
+    // Update with our content
+    const updateRes = await fetch(`${GRAPH_API}/messages/${replyDraft.id}`, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        subject,
+        body: { contentType: "Text", content: body },
+      }),
+    });
+    if (!updateRes.ok) {
+      const text = await updateRes.text().catch(() => "");
+      throw new Error(`Outlook update reply draft error: ${updateRes.status} ${updateRes.statusText}\n${text}`);
+    }
+
+    return { id: replyDraft.id };
+  }
+
+  // New message draft (no thread)
+  const res = await fetch(`${GRAPH_API}/messages`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      subject,
+      body: { contentType: "Text", content: body },
+      toRecipients: [{ emailAddress: { address: to } }],
+      isDraft: true,
+    }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Outlook draft error: ${res.status} ${res.statusText}\n${text}`);
+  }
+
+  return res.json();
 }

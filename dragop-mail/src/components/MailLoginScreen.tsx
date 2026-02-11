@@ -50,7 +50,7 @@ function RealGmailButton({ onGmailAuth, gmailLoading }: { onGmailAuth: (t: strin
     onError: () => {
       alert("Googleログインに失敗しました。再試行してください。");
     },
-    scope: "https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/tasks",
+    scope: "https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.compose https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/tasks",
   });
 
   return (

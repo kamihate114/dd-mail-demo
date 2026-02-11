@@ -3,6 +3,9 @@ export interface AiEmailContext {
   senderEmail: string;
   subject: string;
   body: string;
+  emailId?: string;          // Original message ID (Gmail message ID / Outlook message ID)
+  threadId?: string;         // Gmail threadId for reply threading
+  conversationId?: string;   // Outlook conversationId for reply threading
 }
 
 export interface AiStep1Result {

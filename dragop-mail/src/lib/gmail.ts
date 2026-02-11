@@ -14,6 +14,7 @@ interface GmailMessageMeta {
 
 interface GmailMessageFull {
   id: string;
+  threadId: string;
   snippet: string;
   internalDate: string;
   labelIds: string[];
@@ -280,8 +281,103 @@ export async function fetchGmailMessages(
         receivedAt: formatDate(msg.internalDate),
         receivedDate: date.toISOString().split("T")[0],
         unread: msg.labelIds.includes("UNREAD"),
+        threadId: msg.threadId,
       };
     });
 
   return { emails, nextPageToken };
+}
+
+/* ---------- Compose helpers ---------- */
+
+/**
+ * Encode a string to Base64URL (RFC 4648 §5) for Gmail API
+ */
+function encodeBase64Url(str: string): string {
+  const utf8 = new TextEncoder().encode(str);
+  let binary = "";
+  for (const byte of utf8) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+/**
+ * Build an RFC 2822 formatted email message
+ */
+function buildRawEmail(to: string, subject: string, body: string, inReplyTo?: string, references?: string): string {
+  const lines = [
+    `To: ${to}`,
+    `Subject: =?UTF-8?B?${btoa(unescape(encodeURIComponent(subject)))}?=`,
+    `Content-Type: text/plain; charset=UTF-8`,
+    `MIME-Version: 1.0`,
+  ];
+  if (inReplyTo) {
+    lines.push(`In-Reply-To: ${inReplyTo}`);
+    lines.push(`References: ${references || inReplyTo}`);
+  }
+  lines.push("", body);
+  return lines.join("\r\n");
+}
+
+/**
+ * Send an email via Gmail API
+ */
+export async function sendGmailMessage(
+  accessToken: string,
+  to: string,
+  subject: string,
+  body: string,
+  threadId?: string,
+): Promise<{ id: string; threadId: string }> {
+  const raw = encodeBase64Url(buildRawEmail(to, subject, body));
+
+  const payload: Record<string, string> = { raw };
+  if (threadId) payload.threadId = threadId;
+
+  const res = await fetch(`${GMAIL_API}/messages/send`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Gmail send error: ${res.status} ${res.statusText}\n${text}`);
+  }
+
+  return res.json();
+}
+
+/**
+ * Create a draft via Gmail API
+ */
+export async function createGmailDraft(
+  accessToken: string,
+  to: string,
+  subject: string,
+  body: string,
+  threadId?: string,
+): Promise<{ id: string }> {
+  const raw = encodeBase64Url(buildRawEmail(to, subject, body));
+
+  const message: Record<string, string> = { raw };
+  if (threadId) message.threadId = threadId;
+
+  const res = await fetch(`${GMAIL_API}/drafts`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ message }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Gmail draft error: ${res.status} ${res.statusText}\n${text}`);
+  }
+
+  return res.json();
 }

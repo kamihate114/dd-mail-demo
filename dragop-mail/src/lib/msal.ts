@@ -10,6 +10,7 @@ export const HAS_MS_CLIENT_ID = !!MS_CLIENT_ID;
 
 const LOGIN_SCOPES: string[] = [
   "Mail.ReadWrite",
+  "Mail.Send",
   "Calendars.ReadWrite",
   "Tasks.ReadWrite",
   "User.Read",

@@ -35,6 +35,7 @@ interface MainEditorProps {
   onAiAddEvent: (candidate: { title: string; date: string; startTime: string; endTime?: string }) => void;
   onAiSend: () => void;
   onAiSaveDraft: () => void;
+  isSendingMail?: boolean;
   onAiReset: () => void;
   onAiBack: () => void;
   onMailContentChange: (content: string) => void;
@@ -53,6 +54,7 @@ export function MainEditor({
   onAiAddEvent,
   onAiSend,
   onAiSaveDraft,
+  isSendingMail,
   onAiReset,
   onAiBack,
   onMailContentChange,
@@ -130,7 +132,7 @@ export function MainEditor({
       const emailJson = detail.data["application/x-dragop-email"];
       if (emailJson) {
         try {
-          const email = JSON.parse(emailJson) as { sender: string; senderEmail: string; subject: string; body: string };
+          const email = JSON.parse(emailJson) as { id?: string; sender: string; senderEmail: string; subject: string; body: string; threadId?: string; conversationId?: string };
           const formatted = `件名: ${email.subject}\n差出人: ${email.sender} <${email.senderEmail}>\n\n${email.body}`;
           setContentOrigin("sidebar");
           loadContent(formatted, email.subject);
@@ -139,12 +141,18 @@ export function MainEditor({
             senderEmail: email.senderEmail,
             subject: email.subject,
             body: email.body,
+            emailId: email.id,
+            threadId: email.threadId,
+            conversationId: email.conversationId,
           };
           onAiAnalyze({
             sender: email.sender,
             senderEmail: email.senderEmail,
             subject: email.subject,
             body: email.body,
+            emailId: email.id,
+            threadId: email.threadId,
+            conversationId: email.conversationId,
           });
           return;
         } catch { /* fall through */ }
@@ -276,6 +284,7 @@ export function MainEditor({
                 onAddEvent={onAiAddEvent}
                 onSend={onAiSend}
                 onSaveDraft={onAiSaveDraft}
+                isSendingMail={isSendingMail}
                 onReset={handleAiReset}
                 onBack={onAiBack}
               />

@@ -8,10 +8,10 @@ import { RightSidebar, TodoItem } from "@/components/RightSidebar";
 import { MailPreview } from "@/components/MailPreview";
 import { ScheduleItem } from "@/components/DaySchedule";
 import { MOCK_EMAILS, EmailItem } from "@/lib/mockEmails";
-import { fetchGmailMessages, markGmailAsRead, archiveGmailMessage, fetchGmailLabels, GmailLabel } from "@/lib/gmail";
+import { fetchGmailMessages, markGmailAsRead, archiveGmailMessage, fetchGmailLabels, GmailLabel, sendGmailMessage, createGmailDraft } from "@/lib/gmail";
 import { fetchCalendarEvents, updateCalendarEvent, createCalendarEvent, deleteCalendarEvent } from "@/lib/gcalendar";
 import { fetchTasks, addTask, toggleTask, updateTask, fetchTaskLists } from "@/lib/gtasks";
-import { fetchOutlookMessages, fetchOutlookFolders, markOutlookAsRead, archiveOutlookMessage, OutlookFolder } from "@/lib/outlook";
+import { fetchOutlookMessages, fetchOutlookFolders, markOutlookAsRead, archiveOutlookMessage, OutlookFolder, sendOutlookMessage, createOutlookDraft } from "@/lib/outlook";
 import { fetchMsCalendarEvents, createMsCalendarEvent, updateMsCalendarEvent, deleteMsCalendarEvent } from "@/lib/ms-calendar";
 import { fetchMsTasks, addMsTask, toggleMsTask, updateMsTask, fetchMsTaskLists } from "@/lib/ms-tasks";
 import { msalClearCache } from "@/lib/msal";
@@ -796,6 +796,7 @@ export default function Home() {
   }, [activeTaskListId]);
 
   // AI Assistant state
+  const [isSendingMail, setIsSendingMail] = useState(false);
   const [aiState, setAiState] = useState<AiWorkflowState>(AI_INITIAL_STATE);
   const [aiMailContent, setAiMailContent] = useState("");
 
@@ -887,15 +888,69 @@ export default function Home() {
     });
   }, [handleAddEvent]);
 
-  const handleAiSend = useCallback(() => {
-    alert("メールの送信機能は今後実装予定です。");
-    setAiState(AI_INITIAL_STATE);
-  }, []);
+  const handleAiSend = useCallback(async () => {
+    const p = getActiveProvider();
+    const token = p ? getSavedTokenFor(p) : null;
+    if (!token || !p) {
+      alert("メールを送信するにはログインが必要です。");
+      return;
+    }
+    const to = aiState.emailContext?.senderEmail;
+    const subject = aiState.editedSubject || aiState.step2Result?.replySubject || "";
+    const body = aiState.editedDraft || aiState.step2Result?.draftReply || "";
+    if (!to) {
+      alert("宛先が見つかりません。");
+      return;
+    }
+    setIsSendingMail(true);
+    try {
+      if (p === "gmail") {
+        await sendGmailMessage(token, to, subject, body, aiState.emailContext?.threadId);
+      } else {
+        await sendOutlookMessage(token, to, subject, body, aiState.emailContext?.emailId);
+      }
+      setAiState(AI_INITIAL_STATE);
+      alert("メールを送信しました。");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("[Dragop] Send failed:", err);
+      alert(`メールの送信に失敗しました。\n\n${msg}`);
+    } finally {
+      setIsSendingMail(false);
+    }
+  }, [aiState.emailContext, aiState.editedSubject, aiState.editedDraft, aiState.step2Result]);
 
-  const handleAiSaveDraft = useCallback(() => {
-    alert("下書きとして保存しました。（今後実装予定）");
-    setAiState(AI_INITIAL_STATE);
-  }, []);
+  const handleAiSaveDraft = useCallback(async () => {
+    const p = getActiveProvider();
+    const token = p ? getSavedTokenFor(p) : null;
+    if (!token || !p) {
+      alert("下書きを保存するにはログインが必要です。");
+      return;
+    }
+    const to = aiState.emailContext?.senderEmail;
+    const subject = aiState.editedSubject || aiState.step2Result?.replySubject || "";
+    const body = aiState.editedDraft || aiState.step2Result?.draftReply || "";
+    if (!to) {
+      alert("宛先が見つかりません。");
+      return;
+    }
+    setIsSendingMail(true);
+    try {
+      if (p === "gmail") {
+        await createGmailDraft(token, to, subject, body, aiState.emailContext?.threadId);
+      } else {
+        await createOutlookDraft(token, to, subject, body, aiState.emailContext?.emailId);
+      }
+      setAiState(AI_INITIAL_STATE);
+      alert("下書きとして保存しました。");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("[Dragop] Draft save failed:", err);
+      alert(`下書きの保存に失敗しました。\n\n${msg}`);
+    } finally {
+      setIsSendingMail(false);
+    }
+  }, [aiState.emailContext, aiState.editedSubject, aiState.editedDraft, aiState.step2Result]);
 
   const handleAiReset = useCallback(() => {
     setAiState(AI_INITIAL_STATE);
@@ -1021,7 +1076,7 @@ export default function Home() {
                   animate={{ width: ORIGINAL_MAIL_PANEL_WIDTH, opacity: 1, x: 0 }}
                   exit={{ width: 0, opacity: 0, x: -12 }}
                   transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                  className="hidden shrink-0 overflow-hidden rounded-2xl border border-border-default bg-slate-900/50 shadow-lg shadow-black/10 dark:bg-slate-950/70 dark:shadow-black/20 xl:flex flex-col"
+                  className="hidden shrink-0 overflow-hidden rounded-2xl border border-border-default bg-white shadow-lg shadow-black/10 dark:bg-slate-950/70 dark:shadow-black/20 xl:flex flex-col"
                   style={{
                     marginTop: CENTER_CONTENT_TOP_OFFSET,
                     height: `calc(100% - ${CENTER_CONTENT_TOP_OFFSET}px)`,
@@ -1062,7 +1117,7 @@ export default function Home() {
                     <div className="flex-1 min-h-0 overflow-hidden">
                       {sideCardView === "original" ? (
                         <div className="h-full overflow-y-auto p-3">
-                          <div className="whitespace-pre-wrap text-xs leading-relaxed text-text-muted/80">
+                          <div className="whitespace-pre-wrap text-xs leading-relaxed text-text-secondary">
                             {aiMailContent}
                           </div>
                         </div>
@@ -1100,6 +1155,7 @@ export default function Home() {
                 onAiAddEvent={handleAiAddEvent}
                 onAiSend={handleAiSend}
                 onAiSaveDraft={handleAiSaveDraft}
+                isSendingMail={isSendingMail}
                 onAiReset={handleAiReset}
                 onAiBack={handleAiBack}
                 onMailContentChange={setAiMailContent}

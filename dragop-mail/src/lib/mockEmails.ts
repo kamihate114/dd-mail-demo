@@ -8,6 +8,8 @@ export interface EmailItem {
   receivedAt: string;
   receivedDate?: string; // ISO date string for grouping (e.g. "2025-02-07")
   unread: boolean;
+  threadId?: string;         // Gmail threadId — used for reply threading
+  conversationId?: string;   // Outlook conversationId — used for reply threading
 }
 
 export const MOCK_EMAILS: EmailItem[] = [

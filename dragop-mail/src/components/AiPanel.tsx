@@ -39,6 +39,7 @@ interface AiPanelProps {
   onAddEvent: (candidate: { title: string; date: string; startTime: string; endTime?: string }) => void;
   onSend: () => void;
   onSaveDraft: () => void;
+  isSendingMail?: boolean;
   onReset: () => void;
   onBack: () => void;
 }
@@ -271,6 +272,7 @@ function Step2View({
   onConfirm,
   onSend,
   onSaveDraft,
+  isSendingMail,
   onBack,
 }: {
   emailContext: { sender: string; senderEmail: string };
@@ -281,6 +283,7 @@ function Step2View({
   onConfirm: (d: string) => void;
   onSend: () => void;
   onSaveDraft: () => void;
+  isSendingMail?: boolean;
   onBack: () => void;
 }) {
   return (
@@ -316,24 +319,27 @@ function Step2View({
           <span className="text-xs text-text-muted">Step 2 / 3</span>
           <button
             onClick={onSaveDraft}
+            disabled={isSendingMail}
             className="flex items-center gap-1.5 rounded-lg border border-border-default px-3 py-2 text-xs font-medium text-text-secondary
-                       hover:bg-border-default transition-colors"
+                       hover:bg-border-default transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <Save className="h-3.5 w-3.5" />
+            {isSendingMail ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
             下書き保存
           </button>
           <button
             onClick={onSend}
+            disabled={isSendingMail}
             className="flex items-center gap-1.5 rounded-lg bg-teal px-3 py-2 text-xs font-medium text-white
-                       hover:bg-teal/90 transition-colors"
+                       hover:bg-teal/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <Send className="h-3.5 w-3.5" />
+            {isSendingMail ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
             送信
           </button>
           <button
             onClick={() => onConfirm(draft)}
+            disabled={isSendingMail}
             className="flex items-center gap-1.5 rounded-lg bg-brand-blue px-4 py-2 text-sm font-medium text-white
-                       hover:bg-brand-blue/90 transition-colors"
+                       hover:bg-brand-blue/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <ClipboardCheck className="h-4 w-4" />
             最終確認
@@ -356,6 +362,7 @@ function Step3ComposeView({
   onEditDraft,
   onSend,
   onSaveDraft,
+  isSendingMail,
   onBack,
 }: {
   emailContext: { sender: string; senderEmail: string };
@@ -365,6 +372,7 @@ function Step3ComposeView({
   onEditDraft: (d: string) => void;
   onSend: () => void;
   onSaveDraft: () => void;
+  isSendingMail?: boolean;
   onBack: () => void;
 }) {
   return (
@@ -397,18 +405,20 @@ function Step3ComposeView({
           <span className="text-xs text-text-muted">Step 3 / 3</span>
           <button
             onClick={onSaveDraft}
+            disabled={isSendingMail}
             className="flex items-center gap-1.5 rounded-lg border border-border-default px-3 py-2 text-xs font-medium text-text-secondary
-                       hover:bg-border-default transition-colors"
+                       hover:bg-border-default transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <Save className="h-3.5 w-3.5" />
+            {isSendingMail ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
             下書き保存
           </button>
           <button
             onClick={onSend}
+            disabled={isSendingMail}
             className="flex items-center gap-1.5 rounded-lg bg-teal px-4 py-2 text-sm font-medium text-white
-                       hover:bg-teal/90 transition-colors"
+                       hover:bg-teal/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <Send className="h-4 w-4" />
+            {isSendingMail ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             送信
           </button>
         </div>
@@ -475,14 +485,14 @@ export function Step3Sidebar({
     <div className="h-full overflow-y-auto space-y-3 p-3">
       {/* Todo Candidates */}
       {result.todoCandidates.length > 0 && (
-        <div className="rounded-xl border border-border-default/50 bg-slate-900/30 p-3">
+        <div className="rounded-xl border border-border-default/50 bg-gray-100 dark:bg-slate-900/30 p-3">
           <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-text-muted/90 uppercase tracking-wider">
             <ListTodo className="h-3.5 w-3.5" />
             ToDo候補
           </div>
           <ul className="space-y-1.5">
             {result.todoCandidates.map((c, i) => (
-              <li key={i} className="flex items-center gap-2 rounded-lg bg-surface/40 p-2">
+              <li key={i} className="flex items-center gap-2 rounded-lg bg-white dark:bg-surface/40 p-2">
                 <div className="flex-1 min-w-0">
                   <div className="text-xs text-text-secondary/90 truncate">{c.text}</div>
                   {c.notes && <div className="mt-0.5 text-[10px] text-text-muted/80 truncate">{c.notes}</div>}
@@ -505,14 +515,14 @@ export function Step3Sidebar({
 
       {/* Calendar Candidates */}
       {result.calendarCandidates.length > 0 && (
-        <div className="rounded-xl border border-border-default/50 bg-slate-900/30 p-3">
+        <div className="rounded-xl border border-border-default/50 bg-gray-100 dark:bg-slate-900/30 p-3">
           <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-text-muted/90 uppercase tracking-wider">
             <CalendarPlus className="h-3.5 w-3.5" />
             カレンダー候補
           </div>
           <ul className="space-y-1.5">
             {result.calendarCandidates.map((c, i) => (
-              <li key={i} className="flex items-center gap-2 rounded-lg bg-surface/40 p-2">
+              <li key={i} className="flex items-center gap-2 rounded-lg bg-white dark:bg-surface/40 p-2">
                 <div className="flex-1 min-w-0">
                   <div className="text-xs text-text-secondary/90 truncate">{c.title}</div>
                   <div className="mt-0.5 text-[10px] text-text-muted/80">
@@ -536,7 +546,7 @@ export function Step3Sidebar({
       )}
 
       {/* Checks */}
-      <div className="rounded-xl border border-border-default/50 bg-slate-900/30 p-3">
+      <div className="rounded-xl border border-border-default/50 bg-gray-100 dark:bg-slate-900/30 p-3">
         <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-text-muted/90 uppercase tracking-wider">
           <ClipboardCheck className="h-3.5 w-3.5" />
           最終チェック
@@ -544,7 +554,7 @@ export function Step3Sidebar({
         {result.checks.length > 0 ? (
           <ul className="space-y-1.5">
             {result.checks.map((c, i) => (
-              <li key={i} className="flex items-start gap-2 rounded-lg bg-surface/40 p-2">
+              <li key={i} className="flex items-start gap-2 rounded-lg bg-white dark:bg-surface/40 p-2">
                 {checkIcon(c.type)}
                 <div className="flex-1 min-w-0">
                   <div className="text-[10px] font-medium text-text-muted/80">{checkLabel(c.type)}</div>
@@ -579,6 +589,7 @@ export function AiPanel({
   onEditSubject,
   onSend,
   onSaveDraft,
+  isSendingMail,
   onReset,
   onBack,
 }: AiPanelProps) {
@@ -620,6 +631,7 @@ export function AiPanel({
           onConfirm={onConfirm}
           onSend={onSend}
           onSaveDraft={onSaveDraft}
+          isSendingMail={isSendingMail}
           onBack={onBack}
         />
       )}
@@ -635,6 +647,7 @@ export function AiPanel({
           onEditDraft={onEditDraft}
           onSend={onSend}
           onSaveDraft={onSaveDraft}
+          isSendingMail={isSendingMail}
           onBack={onBack}
         />
       )}

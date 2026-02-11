@@ -444,10 +444,13 @@ export function MailInbox({
                       setDraggingId(email.id);
                       const de = e as unknown as React.DragEvent;
                       const payload = JSON.stringify({
+                        id: email.id,
                         sender: email.sender,
                         senderEmail: email.senderEmail,
                         subject: email.subject,
                         body: email.body,
+                        threadId: email.threadId,
+                        conversationId: email.conversationId,
                       });
                       de.dataTransfer.setData("application/x-dragop-email", payload);
                       de.dataTransfer.setData("text/plain", email.body);
