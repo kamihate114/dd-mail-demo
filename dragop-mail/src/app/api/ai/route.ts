@@ -22,7 +22,7 @@ const openai = new OpenAI({
 // GPT-5 reasoning models — use max_completion_tokens & reasoning_effort
 // temperature は非対応。max_tokens ではなく max_completion_tokens を使用。
 const MODEL_MINI = "gpt-5-mini";
-const MODEL_NANO = "gpt-5-nano";
+const MODEL_NANO = "gpt-5-nano"; // GPT-5 nano - fastest and most cost-efficient
 
 function stripCodeFence(text: string): string {
   const m = text.match(/```(?:json)?\s*([\s\S]*?)```/);
@@ -113,13 +113,14 @@ export async function POST(request: NextRequest): Promise<NextResponse<AiApiResp
         return NextResponse.json({ error: "Step 3に必要なパラメータが不足しています。" }, { status: 400 });
       }
 
+      // Step 3は独立して完成メールのみから分析 (GPT-5 nano使用)
       const raw = await callGPT5(
         [
           { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: buildStep3UserMessage(emailContext, editedDraft) },
+          { role: "user", content: buildStep3UserMessage(editedDraft) },
         ],
-        "medium",
-        2000,
+        "low",
+        1500,
         MODEL_NANO,
       );
       const parsed = JSON.parse(stripCodeFence(raw)) as AiStep3Result;

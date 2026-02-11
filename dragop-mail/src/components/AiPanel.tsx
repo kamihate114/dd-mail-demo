@@ -144,6 +144,7 @@ function Step1View({
   onReset: () => void;
 }) {
   const [customInput, setCustomInput] = useState("");
+  const [isComposing, setIsComposing] = useState(false);
 
   return (
     <motion.div
@@ -214,8 +215,10 @@ function Step1View({
               type="text"
               value={customInput}
               onChange={(e) => setCustomInput(e.target.value)}
+              onCompositionStart={() => setIsComposing(true)}
+              onCompositionEnd={() => setIsComposing(false)}
               onKeyDown={(e) => {
-                if (e.key === "Enter" && customInput.trim()) {
+                if (e.key === "Enter" && !isComposing && customInput.trim()) {
                   onSelectAction(customInput.trim());
                   setCustomInput("");
                 }
@@ -472,17 +475,17 @@ export function Step3Sidebar({
     <div className="h-full overflow-y-auto space-y-3 p-3">
       {/* Todo Candidates */}
       {result.todoCandidates.length > 0 && (
-        <div className="rounded-xl border border-border-default p-3">
-          <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-text-muted uppercase tracking-wider">
+        <div className="rounded-xl border border-border-default/50 bg-slate-900/30 p-3">
+          <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-text-muted/90 uppercase tracking-wider">
             <ListTodo className="h-3.5 w-3.5" />
             ToDo候補
           </div>
           <ul className="space-y-1.5">
             {result.todoCandidates.map((c, i) => (
-              <li key={i} className="flex items-center gap-2 rounded-lg bg-surface/60 p-2">
+              <li key={i} className="flex items-center gap-2 rounded-lg bg-surface/40 p-2">
                 <div className="flex-1 min-w-0">
-                  <div className="text-xs text-text-primary truncate">{c.text}</div>
-                  {c.notes && <div className="mt-0.5 text-[10px] text-text-muted truncate">{c.notes}</div>}
+                  <div className="text-xs text-text-secondary/90 truncate">{c.text}</div>
+                  {c.notes && <div className="mt-0.5 text-[10px] text-text-muted/80 truncate">{c.notes}</div>}
                 </div>
                 {addedTodos.has(i) ? (
                   <CheckCircle2 className="h-4 w-4 shrink-0 text-teal" />
@@ -502,17 +505,17 @@ export function Step3Sidebar({
 
       {/* Calendar Candidates */}
       {result.calendarCandidates.length > 0 && (
-        <div className="rounded-xl border border-border-default p-3">
-          <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-text-muted uppercase tracking-wider">
+        <div className="rounded-xl border border-border-default/50 bg-slate-900/30 p-3">
+          <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-text-muted/90 uppercase tracking-wider">
             <CalendarPlus className="h-3.5 w-3.5" />
             カレンダー候補
           </div>
           <ul className="space-y-1.5">
             {result.calendarCandidates.map((c, i) => (
-              <li key={i} className="flex items-center gap-2 rounded-lg bg-surface/60 p-2">
+              <li key={i} className="flex items-center gap-2 rounded-lg bg-surface/40 p-2">
                 <div className="flex-1 min-w-0">
-                  <div className="text-xs text-text-primary truncate">{c.title}</div>
-                  <div className="mt-0.5 text-[10px] text-text-muted">
+                  <div className="text-xs text-text-secondary/90 truncate">{c.title}</div>
+                  <div className="mt-0.5 text-[10px] text-text-muted/80">
                     {c.date} {c.startTime}{c.endTime ? ` - ${c.endTime}` : ""}
                   </div>
                 </div>
@@ -533,21 +536,21 @@ export function Step3Sidebar({
       )}
 
       {/* Checks */}
-      <div className="rounded-xl border border-border-default p-3">
-        <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-text-muted uppercase tracking-wider">
+      <div className="rounded-xl border border-border-default/50 bg-slate-900/30 p-3">
+        <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-text-muted/90 uppercase tracking-wider">
           <ClipboardCheck className="h-3.5 w-3.5" />
           最終チェック
         </div>
         {result.checks.length > 0 ? (
           <ul className="space-y-1.5">
             {result.checks.map((c, i) => (
-              <li key={i} className="flex items-start gap-2 rounded-lg bg-surface/60 p-2">
+              <li key={i} className="flex items-start gap-2 rounded-lg bg-surface/40 p-2">
                 {checkIcon(c.type)}
                 <div className="flex-1 min-w-0">
-                  <div className="text-[10px] font-medium text-text-muted">{checkLabel(c.type)}</div>
-                  <div className="text-xs text-text-primary">{c.message}</div>
+                  <div className="text-[10px] font-medium text-text-muted/80">{checkLabel(c.type)}</div>
+                  <div className="text-xs text-text-secondary/90">{c.message}</div>
                   {c.suggestion && (
-                    <div className="mt-0.5 text-[10px] text-teal">{c.suggestion}</div>
+                    <div className="mt-0.5 text-[10px] text-teal/90">{c.suggestion}</div>
                   )}
                 </div>
               </li>

@@ -950,6 +950,16 @@ export default function Home() {
   const showOriginalMailPanel = aiState.step !== "idle" && aiMailContent.trim().length > 0;
   const showFinalCheckPanel = aiState.step === "step3-loading" || aiState.step === "step3";
 
+  // Toggle state for unified side panel (元メール / 最終チェック)
+  const [sideCardView, setSideCardView] = useState<"original" | "finalCheck">("original");
+
+  // Auto-switch to finalCheck when step3 is reached
+  useEffect(() => {
+    if (aiState.step === "step3" || aiState.step === "step3-loading") {
+      setSideCardView("finalCheck");
+    }
+  }, [aiState.step]);
+
   return (
     <div className="flex h-screen flex-col bg-surface transition-colors duration-300">
       <div className="relative flex flex-1 overflow-hidden">
@@ -1011,24 +1021,57 @@ export default function Home() {
                   animate={{ width: ORIGINAL_MAIL_PANEL_WIDTH, opacity: 1, x: 0 }}
                   exit={{ width: 0, opacity: 0, x: -12 }}
                   transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                  className="hidden shrink-0 overflow-hidden rounded-2xl border border-border-default bg-surface-raised/80 shadow-lg shadow-black/10 dark:bg-surface-raised dark:shadow-black/20 xl:flex"
+                  className="hidden shrink-0 overflow-hidden rounded-2xl border border-border-default bg-slate-900/50 shadow-lg shadow-black/10 dark:bg-slate-950/70 dark:shadow-black/20 xl:flex"
                   style={{
                     marginTop: CENTER_CONTENT_TOP_OFFSET,
                     height: `calc(100% - ${CENTER_CONTENT_TOP_OFFSET}px)`,
                   }}
                 >
                   <div className="flex h-full min-h-0 w-full flex-col">
-                    <div className="flex items-center justify-between border-b border-border-default px-3 py-2">
-                      <div className="flex items-center gap-1.5">
-                        <MailIcon className="h-3.5 w-3.5 text-text-muted" />
-                        <span className="text-xs font-medium text-text-muted uppercase tracking-wider">元メール</span>
-                      </div>
-                      <span className="text-[10px] text-text-muted">Source</span>
+                    {/* Toggle header */}
+                    <div className="flex items-center border-b border-border-default">
+                      <button
+                        onClick={() => setSideCardView("original")}
+                        className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 transition-colors ${
+                          sideCardView === "original"
+                            ? "bg-border-default/50 text-text-primary"
+                            : "text-text-muted hover:bg-border-default/30"
+                        }`}
+                      >
+                        <MailIcon className="h-3.5 w-3.5" />
+                        <span className="text-xs font-medium uppercase tracking-wider">元メール</span>
+                      </button>
+                      {showFinalCheckPanel && (
+                        <button
+                          onClick={() => setSideCardView("finalCheck")}
+                          className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 transition-colors ${
+                            sideCardView === "finalCheck"
+                              ? "bg-border-default/50 text-text-primary"
+                              : "text-text-muted hover:bg-border-default/30"
+                          }`}
+                        >
+                          <SparklesIcon className="h-3.5 w-3.5 text-brand-blue" />
+                          <span className="text-xs font-medium uppercase tracking-wider">最終チェック</span>
+                        </button>
+                      )}
                     </div>
-                    <div className="flex-1 overflow-y-auto p-3">
-                      <div className="whitespace-pre-wrap text-xs leading-relaxed text-text-secondary">
-                        {aiMailContent}
-                      </div>
+
+                    {/* Content area */}
+                    <div className="flex-1 min-h-0 overflow-hidden">
+                      {sideCardView === "original" ? (
+                        <div className="h-full overflow-y-auto p-3">
+                          <div className="whitespace-pre-wrap text-xs leading-relaxed text-text-muted/80">
+                            {aiMailContent}
+                          </div>
+                        </div>
+                      ) : (
+                        <Step3Sidebar
+                          result={aiState.step3Result}
+                          isLoading={aiState.step === "step3-loading"}
+                          onAddTodo={handleAiAddTodo}
+                          onAddEvent={handleAiAddEvent}
+                        />
+                      )}
                     </div>
                   </div>
                 </motion.div>
@@ -1058,36 +1101,6 @@ export default function Home() {
               />
             </div>
 
-            <AnimatePresence>
-              {showFinalCheckPanel && (
-                <motion.div
-                  initial={{ width: 0, opacity: 0, x: 12 }}
-                  animate={{ width: FINAL_CHECK_PANEL_WIDTH, opacity: 1, x: 0 }}
-                  exit={{ width: 0, opacity: 0, x: 12 }}
-                  transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                  className="hidden shrink-0 overflow-hidden rounded-2xl border border-border-default bg-surface-raised/80 shadow-lg shadow-black/10 dark:bg-surface-raised dark:shadow-black/20 xl:flex"
-                  style={{
-                    marginTop: CENTER_CONTENT_TOP_OFFSET,
-                    height: `calc(100% - ${CENTER_CONTENT_TOP_OFFSET}px)`,
-                  }}
-                >
-                  <div className="flex h-full min-h-0 w-full flex-col">
-                    <div className="flex items-center gap-1.5 border-b border-border-default px-3 py-2">
-                      <SparklesIcon className="h-3.5 w-3.5 text-brand-blue" />
-                      <span className="text-xs font-medium text-text-muted uppercase tracking-wider">最終チェック</span>
-                    </div>
-                    <div className="min-h-0 flex-1">
-                      <Step3Sidebar
-                        result={aiState.step3Result}
-                        isLoading={aiState.step === "step3-loading"}
-                        onAddTodo={handleAiAddTodo}
-                        onAddEvent={handleAiAddEvent}
-                      />
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
           </div>
         </main>
 

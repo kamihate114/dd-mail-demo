@@ -69,19 +69,11 @@ ${selectedAction}
 }
 
 export function buildStep3UserMessage(
-  email: AiEmailContext,
   editedDraft: string,
 ): string {
-  return `以下の返信メール文を最終チェックし、ToDo候補とカレンダー候補を抽出してください。
+  return `以下の返信メール文を分析し、ToDo候補・カレンダー候補・品質チェックを行ってください。
 
-【元メール】
-件名: ${email.subject}
-差出人: ${email.sender} <${email.senderEmail}>
-
-本文:
-${email.body}
-
-【返信文】
+【返信メール文】
 ${editedDraft}
 
 以下のJSON形式で回答してください：
@@ -98,11 +90,11 @@ ${editedDraft}
 }
 
 重要な指示：
-- todoCandidatesは返信内容から自分が今後やるべきアクションを必ず1つ以上抽出してください。「返信を送る」以外の具体的なタスクを考えてください。返信文で約束した内容、準備すべき資料、確認すべき事項などを含めてください。
-- calendarCandidatesは元メールと返信文から日時情報がある場合のみ抽出してください。日時情報がなければ空配列にしてください。
-- checksは以下の観点で厳しくチェックしてください：
+- todoCandidatesはメール文から自分が今後やるべきアクションを抽出してください。約束した内容、準備すべき資料、確認事項など。具体的なタスクがない場合は空配列。
+- calendarCandidatesは日時情報がある場合のみ抽出。日時情報がなければ空配列。
+- checksは厳しくチェック：
   * typo: 誤字脱字、変換ミス、句読点の誤り
-  * keigo: 敬語の誤り（二重敬語、敬語の種類の間違い、不適切なカジュアル表現）
-  * missing_info: 相手の質問に答えていない、必要な情報が不足、曖昧な表現
-  問題が見つからない場合でも、改善提案として少なくとも1つのchecksを返してください。`;
+  * keigo: 敬語の誤り（二重敬語、不適切な表現）
+  * missing_info: 情報不足、曖昧な表現
+  問題なければ空配列。`;
 }
