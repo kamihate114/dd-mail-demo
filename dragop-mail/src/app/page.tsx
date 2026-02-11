@@ -1012,8 +1012,8 @@ export default function Home() {
         </div>
 
         {/* Center workspace (expands with side cards) */}
-        <main className="min-w-0 flex-1 overflow-y-auto px-4 pt-14 pb-14 lg:px-6">
-          <div className="mx-auto flex h-full w-full justify-center gap-3 xl:gap-4">
+        <main className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-4 pt-14 pb-14 lg:px-6">
+          <div className="mx-auto flex h-full w-full max-w-[1800px] justify-center gap-3 xl:gap-4">
             <AnimatePresence>
               {showOriginalMailPanel && (
                 <motion.div
@@ -1021,10 +1021,12 @@ export default function Home() {
                   animate={{ width: ORIGINAL_MAIL_PANEL_WIDTH, opacity: 1, x: 0 }}
                   exit={{ width: 0, opacity: 0, x: -12 }}
                   transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                  className="hidden shrink-0 overflow-hidden rounded-2xl border border-border-default bg-slate-900/50 shadow-lg shadow-black/10 dark:bg-slate-950/70 dark:shadow-black/20 xl:flex"
+                  className="hidden shrink-0 overflow-hidden rounded-2xl border border-border-default bg-slate-900/50 shadow-lg shadow-black/10 dark:bg-slate-950/70 dark:shadow-black/20 xl:flex flex-col"
                   style={{
                     marginTop: CENTER_CONTENT_TOP_OFFSET,
                     height: `calc(100% - ${CENTER_CONTENT_TOP_OFFSET}px)`,
+                    minWidth: `${ORIGINAL_MAIL_PANEL_WIDTH}px`,
+                    maxWidth: `${ORIGINAL_MAIL_PANEL_WIDTH}px`,
                   }}
                 >
                   <div className="flex h-full min-h-0 w-full flex-col">
@@ -1079,8 +1081,11 @@ export default function Home() {
             </AnimatePresence>
 
             <div
-              className="min-w-0 w-full max-w-3xl shrink-0 xl:max-w-none"
-              style={{ width: `min(100%, ${CENTER_EDITOR_WIDTH}px)` }}
+              className="min-w-0 flex-1 max-w-3xl shrink xl:max-w-none"
+              style={{
+                width: `min(100%, ${CENTER_EDITOR_WIDTH}px)`,
+                maxWidth: `${CENTER_EDITOR_WIDTH}px`
+              }}
             >
               <MainEditor
                 onMailLoaded={handleMailLoaded}

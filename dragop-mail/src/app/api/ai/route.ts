@@ -119,8 +119,8 @@ export async function POST(request: NextRequest): Promise<NextResponse<AiApiResp
           { role: "system", content: SYSTEM_PROMPT },
           { role: "user", content: buildStep3UserMessage(editedDraft) },
         ],
-        "low",
-        1500,
+        "medium",
+        2000,
         MODEL_NANO,
       );
       const parsed = JSON.parse(stripCodeFence(raw)) as AiStep3Result;
