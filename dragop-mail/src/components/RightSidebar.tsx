@@ -46,11 +46,11 @@ export function RightSidebar({
   const [newTodo, setNewTodo] = useState("");
   const [showListPicker, setShowListPicker] = useState(false);
   const [selectedTodoId, setSelectedTodoId] = useState<string | null>(null);
-  // リスト行の見出し（○の右）で編集中のIDと一時タイトル
-  const [editingTodoId, setEditingTodoId] = useState<string | null>(null);
-  const [editingTitle, setEditingTitle] = useState("");
   // Track items completing (for animation before hide)
   const [completingIds, setCompletingIds] = useState<Set<string>>(new Set());
+  // Track editing title for selected todo
+  const [editingTitleId, setEditingTitleId] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState("");
 
   const selectedTodo = todos.find((t) => t.id === selectedTodoId) || null;
   const activeListName = taskLists?.find((l) => l.id === activeTaskListId)?.title ?? "ToDo";
@@ -128,10 +128,10 @@ export function RightSidebar({
 
       <div className="h-px bg-border-default" />
 
-      {/* Todo list — synced with Google Tasks */}
-      <div className="rounded-xl border border-border-default bg-surface-raised/50 dark:bg-surface-raised p-3">
+      {/* Todo list — synced with Google Tasks / Microsoft To Do API */}
+      <div className="rounded-xl border border-border-default bg-surface-raised/50 dark:bg-surface-raised p-4">
           {/* Header with list selector */}
-          <div className="mb-2 flex items-center justify-between">
+          <div className="mb-3 flex items-center justify-between">
             <div className="relative" ref={listPickerRef}>
               <button
                 onClick={() => { if (taskLists && taskLists.length > 1) setShowListPicker(!showListPicker); }}
@@ -151,14 +151,14 @@ export function RightSidebar({
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -4 }}
                     transition={{ duration: 0.15 }}
-                    className="absolute left-0 top-full z-20 mt-1 min-w-[140px] rounded-lg border border-border-default
+                    className="absolute left-0 top-full z-20 mt-1.5 min-w-[140px] rounded-lg border border-border-default
                                bg-surface-raised shadow-lg dark:bg-surface-raised py-1"
                   >
                     {taskLists.map((list) => (
                       <button
                         key={list.id}
                         onClick={() => { onSelectTaskList?.(list.id); setShowListPicker(false); }}
-                        className={`w-full px-3 py-1.5 text-left text-[11px] transition-colors
+                        className={`w-full px-2.5 py-1.5 text-left text-[11px] transition-colors
                           ${list.id === activeTaskListId
                             ? "bg-brand-blue/20 dark:bg-brand-blue/30 text-brand-blue font-medium"
                             : "text-text-secondary hover:bg-border-default"
@@ -178,14 +178,14 @@ export function RightSidebar({
           </div>
 
           {/* Add input */}
-          <div className="mb-2 flex items-center gap-1">
+          <div className="mb-3 flex items-center gap-2">
             <input
               type="text"
               placeholder="新しいタスク..."
               value={newTodo}
               onChange={(e) => setNewTodo(e.target.value)}
               onKeyDown={handleKeyDown}
-              className="flex-1 rounded-md border border-border-default bg-transparent px-2 py-1
+              className="flex-1 rounded-md border border-border-default bg-transparent px-2 py-1.5
                          text-xs text-text-primary placeholder:text-text-muted
                          focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue/30
                          transition-colors"
@@ -202,9 +202,9 @@ export function RightSidebar({
           </div>
 
           {/* Items */}
-          <div className="flex flex-col gap-0.5">
+          <div className="flex flex-col gap-1">
             {isLoadingTodos ? (
-              <div className="flex items-center justify-center gap-2 py-4">
+              <div className="flex items-center justify-center gap-2 py-6">
                 <Loader2 className="h-3 w-3 text-brand-blue animate-spin" />
                 <span className="text-[10px] text-text-muted">読み込み中...</span>
               </div>
@@ -227,15 +227,14 @@ export function RightSidebar({
                           }}
                           exit={{ opacity: 0, height: 0, marginBottom: 0 }}
                           transition={{ duration: isCompleting ? 0.5 : 0.2 }}
-                          onClick={() => setSelectedTodoId(isSelected ? null : todo.id)}
-                          className={`flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors cursor-pointer
+                          className={`group flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors
                             ${isSelected ? "rounded-b-none bg-brand-blue/30 dark:bg-brand-blue/40" : "hover:bg-border-default"}
                           `}
                         >
                           {/* Checkbox */}
                           <button
                             onClick={(e) => { e.stopPropagation(); handleToggleWithAnimation(todo.id); }}
-                            className="shrink-0"
+                            className="shrink-0 cursor-pointer"
                           >
                             {isCompleting ? (
                               <motion.div
@@ -249,43 +248,74 @@ export function RightSidebar({
                               <Circle className={`h-3 w-3 transition-colors ${isSelected ? "text-brand-blue" : "text-text-muted hover:text-brand-blue"}`} />
                             )}
                           </button>
-                          {/* 見出し（○の右）— クリックで見出しを編集。行のメモ部分クリックで詳細パネル */}
-                          <div className="flex-1 min-w-0 flex flex-col">
-                            {editingTodoId === todo.id ? (
+                          {/* 見出し（○の右）— クリックで詳細パネルを開く、詳細パネル開いている時はクリックで編集 */}
+                          <div 
+                            className="flex-1 min-w-0 flex flex-col cursor-pointer"
+                            onClick={(e) => {
+                              // チェックボックスのクリックは除外
+                              const target = e.target as HTMLElement;
+                              if (target.closest('button') || target.closest('input')) {
+                                return;
+                              }
+                              // 詳細パネルが開いている時はタイトル編集モードに入る
+                              if (isSelected && editingTitleId !== todo.id) {
+                                e.stopPropagation();
+                                setEditingTitleId(todo.id);
+                                setEditingTitle(todo.text);
+                                return;
+                              }
+                              // タイトル部分全体をクリックしたら詳細パネルを開く
+                              e.stopPropagation();
+                              setSelectedTodoId(isSelected ? null : todo.id);
+                            }}
+                          >
+                            {isSelected && editingTitleId === todo.id ? (
                               <input
                                 autoFocus
                                 value={editingTitle}
                                 onChange={(e) => setEditingTitle(e.target.value)}
                                 onBlur={() => {
                                   const t = editingTitle.trim();
-                                  if (t && t !== todo.text) onUpdateTodo?.(todo.id, { title: t });
-                                  setEditingTodoId(null);
+                                  if (t && t !== todo.text) {
+                                    onUpdateTodo?.(todo.id, { title: t });
+                                  }
+                                  setEditingTitleId(null);
                                 }}
                                 onKeyDown={(e) => {
-                                  if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                                  if (e.key === "Enter") {
+                                    const t = editingTitle.trim();
+                                    if (t && t !== todo.text) {
+                                      onUpdateTodo?.(todo.id, { title: t });
+                                    }
+                                    setEditingTitleId(null);
+                                    (e.target as HTMLInputElement).blur();
+                                  }
+                                  if (e.key === "Escape") {
+                                    setEditingTitle(todo.text);
+                                    setEditingTitleId(null);
+                                  }
                                   e.stopPropagation();
                                 }}
                                 onClick={(e) => e.stopPropagation()}
                                 className={`min-w-0 w-full bg-transparent text-xs border-none focus:outline-none focus:ring-0 px-0 py-0
-                                  ${isCompleting ? "text-teal line-through" : isSelected ? "text-brand-blue dark:text-white font-medium" : "text-text-primary"}`}
+                                  ${isCompleting ? "text-teal line-through" : "text-brand-blue dark:text-white font-medium"}`}
                               />
                             ) : (
                               <span
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setEditingTodoId(todo.id);
-                                  setEditingTitle(todo.text);
-                                }}
-                                className={`cursor-text text-xs block ${isCompleting ? "text-teal line-through" : isSelected ? "text-brand-blue dark:text-white font-medium" : "text-text-primary"}`}
+                                className={`text-xs block ${isCompleting ? "text-teal line-through" : isSelected ? "text-brand-blue dark:text-white font-medium" : "text-text-primary"}`}
+                                title={isSelected ? "クリックでタイトルを編集" : "クリックで詳細を開く"}
                               >
                                 {todo.text || "タイトルなし"}
                               </span>
                             )}
-                            {todo.notes ? (
-                              <p className={`mt-0.5 text-[10px] truncate cursor-pointer ${isSelected ? "text-brand-blue/80 dark:text-text-secondary" : "text-text-muted"}`} title="クリックで詳細メモを編集">
+                            {todo.notes && (
+                              <p 
+                                className={`mt-0.5 text-[10px] truncate ${isSelected ? "text-brand-blue/80 dark:text-text-secondary" : "text-text-muted"}`} 
+                                title="クリックで詳細を開く"
+                              >
                                 {todo.notes}
                               </p>
-                            ) : null}
+                            )}
                           </div>
                         </motion.div>
                         <AnimatePresence>
@@ -300,7 +330,10 @@ export function RightSidebar({
                             >
                               <TaskDetailPanel
                                 todo={todo}
-                                onClose={() => setSelectedTodoId(null)}
+                                onClose={() => {
+                                  setSelectedTodoId(null);
+                                  setEditingTitleId(null);
+                                }}
                                 onUpdate={onUpdateTodo}
                                 onToggle={() => handleToggleWithAnimation(todo.id)}
                               />
@@ -313,7 +346,7 @@ export function RightSidebar({
                 </AnimatePresence>
 
                 {visibleTodos.length === 0 && !isLoadingTodos && (
-                  <p className="py-1.5 text-center text-[10px] text-text-muted">
+                  <p className="py-4 text-center text-[10px] text-text-muted">
                     タスクを追加してください
                   </p>
                 )}
@@ -336,6 +369,7 @@ function TaskDetailPanel({
 }) {
   const [notes, setNotes] = useState(todo.notes ?? "");
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     setNotes(todo.notes ?? "");
@@ -352,7 +386,7 @@ function TaskDetailPanel({
 
   return (
     <div className="rounded-b-xl border-x border-b border-brand-blue/30 bg-brand-blue/30 dark:bg-brand-blue/40 px-2 pt-1.5 pb-3">
-      <div className="flex justify-end mb-1">
+      <div className="flex justify-end mb-1.5">
         <button
           onClick={onClose}
           className="rounded p-0.5 text-text-muted hover:text-text-primary transition-colors"
@@ -362,13 +396,21 @@ function TaskDetailPanel({
         </button>
       </div>
       <textarea
+        ref={textareaRef}
+        data-todo-id={todo.id}
         value={notes}
         onChange={(e) => { setNotes(e.target.value); saveNotes(e.target.value); }}
         placeholder="メモを追加..."
-        className="w-full resize-none rounded-lg bg-black/10 dark:bg-black/20 px-2 py-1.5 text-[11px]
+        className="w-full resize-none rounded-lg bg-black/10 dark:bg-black/20 px-2 py-1.5 text-xs
                    text-text-secondary placeholder:text-text-muted
                    focus:outline-none min-h-[60px] border-0"
         rows={3}
+        onKeyDown={(e) => {
+          // Escapeキーでパネルを閉じる
+          if (e.key === "Escape") {
+            onClose();
+          }
+        }}
       />
     </div>
   );

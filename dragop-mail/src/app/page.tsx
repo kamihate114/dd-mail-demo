@@ -19,6 +19,15 @@ import { TaskList } from "@/components/RightSidebar";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { ChevronRight } from "lucide-react";
 import { Calendar } from "@/components/Calendar";
+import {
+  AiWorkflowState,
+  AiEmailContext,
+  AiApiRequest,
+  AiApiResponse,
+  AI_INITIAL_STATE,
+} from "@/lib/ai-types";
+import { Step3Sidebar } from "@/components/AiPanel";
+import { Mail as MailIcon, Loader2, Sparkles as SparklesIcon } from "lucide-react";
 
 function generateId(): string {
   return crypto.randomUUID();
@@ -781,6 +790,124 @@ export default function Home() {
     }
   }, [activeTaskListId]);
 
+  // AI Assistant state
+  const [aiState, setAiState] = useState<AiWorkflowState>(AI_INITIAL_STATE);
+  const [aiMailContent, setAiMailContent] = useState("");
+
+  const callAiApi = useCallback(async (body: AiApiRequest): Promise<AiApiResponse> => {
+    const res = await fetch("/api/ai", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data: AiApiResponse = await res.json();
+    if (!res.ok || data.error) {
+      throw new Error(data.error || `API error: ${res.status}`);
+    }
+    return data;
+  }, []);
+
+  const handleAiAnalyze = useCallback(async (emailContext: AiEmailContext) => {
+    setAiState({ ...AI_INITIAL_STATE, step: "step1-loading", emailContext });
+    try {
+      const data = await callAiApi({ step: 1, emailContext });
+      if (data.step1) {
+        setAiState((prev) => ({ ...prev, step: "step1", step1Result: data.step1! }));
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setAiState((prev) => ({ ...prev, step: "idle", error: msg }));
+    }
+  }, [callAiApi]);
+
+  const handleAiSelectAction = useCallback(async (actionPrompt: string) => {
+    setAiState((prev) => ({ ...prev, step: "step2-loading", selectedAction: actionPrompt }));
+    try {
+      const data = await callAiApi({
+        step: 2,
+        emailContext: aiState.emailContext!,
+        selectedAction: actionPrompt,
+        step1Result: aiState.step1Result!,
+      });
+      if (data.step2) {
+        setAiState((prev) => ({
+          ...prev,
+          step: "step2",
+          step2Result: data.step2!,
+          editedDraft: data.step2!.draftReply,
+          editedSubject: data.step2!.replySubject,
+        }));
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setAiState((prev) => ({ ...prev, step: "step1", error: msg }));
+    }
+  }, [callAiApi, aiState.emailContext, aiState.step1Result]);
+
+  const handleAiEditDraft = useCallback((draft: string) => {
+    setAiState((prev) => ({ ...prev, editedDraft: draft }));
+  }, []);
+
+  const handleAiEditSubject = useCallback((subject: string) => {
+    setAiState((prev) => ({ ...prev, editedSubject: subject }));
+  }, []);
+
+  const handleAiConfirm = useCallback(async (editedDraft: string) => {
+    setAiState((prev) => ({ ...prev, step: "step3-loading" }));
+    try {
+      const data = await callAiApi({
+        step: 3,
+        emailContext: aiState.emailContext!,
+        editedDraft,
+      });
+      if (data.step3) {
+        setAiState((prev) => ({ ...prev, step: "step3", step3Result: data.step3! }));
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setAiState((prev) => ({ ...prev, step: "step2", error: msg }));
+    }
+  }, [callAiApi, aiState.emailContext]);
+
+  const handleAiAddTodo = useCallback((candidate: { text: string; notes?: string }) => {
+    handleAddTodo(candidate.text);
+  }, [handleAddTodo]);
+
+  const handleAiAddEvent = useCallback((candidate: { title: string; date: string; startTime: string; endTime?: string }) => {
+    const date = new Date(candidate.date);
+    handleAddEvent(date, {
+      title: candidate.title,
+      startTime: candidate.startTime,
+      endTime: candidate.endTime,
+    });
+  }, [handleAddEvent]);
+
+  const handleAiSend = useCallback(() => {
+    alert("メールの送信機能は今後実装予定です。");
+    setAiState(AI_INITIAL_STATE);
+  }, []);
+
+  const handleAiSaveDraft = useCallback(() => {
+    alert("下書きとして保存しました。（今後実装予定）");
+    setAiState(AI_INITIAL_STATE);
+  }, []);
+
+  const handleAiReset = useCallback(() => {
+    setAiState(AI_INITIAL_STATE);
+  }, []);
+
+  const handleAiBack = useCallback(() => {
+    setAiState((prev) => {
+      if (prev.step === "step3" || prev.step === "step3-loading") {
+        return { ...prev, step: "step2", step3Result: null, error: null };
+      }
+      if (prev.step === "step2" || prev.step === "step2-loading") {
+        return { ...prev, step: "step1", step2Result: null, editedDraft: null, selectedAction: null, error: null };
+      }
+      return AI_INITIAL_STATE;
+    });
+  }, []);
+
   // Compute saved providers for login screen (show restore options); re-run after full logout via savedProvidersVersion
   const savedProviders = useMemo(() => getSavedProviders(), [mailLoggedIn, savedProvidersVersion]);
 
@@ -866,12 +993,73 @@ export default function Home() {
           />
         </div>
 
+        {/* Original mail panel — between left sidebar and center */}
+        <AnimatePresence>
+          {aiState.step !== "idle" && aiMailContent.trim().length > 0 && (
+            <motion.div
+              initial={{ width: 0, opacity: 0 }}
+              animate={{ width: 240, opacity: 1 }}
+              exit={{ width: 0, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 300, damping: 30 }}
+              className="hidden shrink-0 overflow-hidden lg:block"
+            >
+              <div className="flex h-full flex-col border-r border-border-default bg-surface">
+                <div className="flex items-center gap-1.5 border-b border-border-default px-3 py-2">
+                  <MailIcon className="h-3.5 w-3.5 text-text-muted" />
+                  <span className="text-xs font-medium text-text-muted uppercase tracking-wider">元メール</span>
+                </div>
+                <div className="flex-1 overflow-y-auto p-3">
+                  <div className="whitespace-pre-wrap text-xs leading-relaxed text-text-secondary">
+                    {aiMailContent}
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* Center */}
         <main className="flex-1 overflow-y-auto px-4 lg:px-6 pt-14 pb-14">
           <div className="mx-auto h-full max-w-3xl">
-            <MainEditor onMailLoaded={handleMailLoaded} onAppleMailDrop={handleAppleMailDrop} />
+            <MainEditor
+              onMailLoaded={handleMailLoaded}
+              onAppleMailDrop={handleAppleMailDrop}
+              aiState={aiState}
+              onAiAnalyze={handleAiAnalyze}
+              onAiSelectAction={handleAiSelectAction}
+              onAiConfirm={handleAiConfirm}
+              onAiEditDraft={handleAiEditDraft}
+              onAiEditSubject={handleAiEditSubject}
+              onAiAddTodo={handleAiAddTodo}
+              onAiAddEvent={handleAiAddEvent}
+              onAiSend={handleAiSend}
+              onAiSaveDraft={handleAiSaveDraft}
+              onAiReset={handleAiReset}
+              onAiBack={handleAiBack}
+              onMailContentChange={setAiMailContent}
+            />
           </div>
         </main>
+
+        {/* Step3 sidebar — between center and right sidebar buttons */}
+        <AnimatePresence>
+          {(aiState.step === "step3-loading" || aiState.step === "step3") && (
+            <motion.div
+              initial={{ width: 0, opacity: 0 }}
+              animate={{ width: 240, opacity: 1 }}
+              exit={{ width: 0, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 300, damping: 30 }}
+              className="hidden shrink-0 overflow-hidden border-l border-border-default bg-surface md:block"
+            >
+              <Step3Sidebar
+                result={aiState.step3Result}
+                isLoading={aiState.step === "step3-loading"}
+                onAddTodo={handleAiAddTodo}
+                onAddEvent={handleAiAddEvent}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Buttons to the left of calendar (always visible, outside sidebar) */}
         <div className="hidden shrink-0 flex-col items-center gap-2 px-2 pt-4 md:flex">

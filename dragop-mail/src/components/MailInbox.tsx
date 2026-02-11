@@ -286,24 +286,30 @@ export function MailInbox({
               {showPanel === "folder" && (
                 <div className="flex flex-col gap-0.5">
                   <p className="text-[10px] font-semibold text-text-muted px-1 mb-1">フォルダ</p>
-                  {labels.map((label) => (
-                    <button
-                      key={label.id}
-                      onClick={() => { onSelectLabel(label.id); setShowPanel(null); }}
-                      className={`flex items-center justify-between rounded-md px-2 py-1.5 text-[11px] transition-colors ${
-                        label.id === activeLabelId
-                          ? "bg-brand-blue/10 text-brand-blue font-medium"
-                          : "text-text-secondary hover:bg-border-default"
-                      }`}
-                    >
-                      <span>{label.name}</span>
-                      {label.messagesUnread != null && label.messagesUnread > 0 && (
-                        <span className="text-[9px] rounded-full bg-brand-blue/15 text-brand-blue px-1.5 py-0.5 font-medium">
-                          {label.messagesUnread}
-                        </span>
-                      )}
-                    </button>
-                  ))}
+                  {labels.length === 0 ? (
+                    <div className="px-2 py-3 text-center text-[11px] text-text-muted">
+                      フォルダが読み込まれていません
+                    </div>
+                  ) : (
+                    labels.map((label) => (
+                      <button
+                        key={label.id}
+                        onClick={() => { onSelectLabel(label.id); setShowPanel(null); }}
+                        className={`flex items-center justify-between rounded-md px-2 py-1.5 text-[11px] transition-colors ${
+                          label.id === activeLabelId
+                            ? "bg-brand-blue/10 text-brand-blue font-medium"
+                            : "text-text-secondary hover:bg-border-default"
+                        }`}
+                      >
+                        <span>{label.name}</span>
+                        {label.messagesUnread != null && label.messagesUnread > 0 && (
+                          <span className="text-[9px] rounded-full bg-brand-blue/15 text-brand-blue px-1.5 py-0.5 font-medium">
+                            {label.messagesUnread}
+                          </span>
+                        )}
+                      </button>
+                    ))
+                  )}
                 </div>
               )}
               {showPanel === "filter" && (

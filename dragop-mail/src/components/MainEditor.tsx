@@ -3,7 +3,9 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { useDropzone } from "react-dropzone";
 import { motion, AnimatePresence } from "framer-motion";
-import { Mail, Upload, HelpCircle, Sparkles, ArrowLeft } from "lucide-react";
+import { Mail, Upload, HelpCircle, Sparkles } from "lucide-react";
+import { AiWorkflowState, AiEmailContext } from "@/lib/ai-types";
+import { AiPanel } from "@/components/AiPanel";
 
 interface DropDetail {
   types: string[];
@@ -23,18 +25,48 @@ function readFileAsText(file: File): Promise<string> {
 interface MainEditorProps {
   onMailLoaded: (text: string, source: string) => void;
   onAppleMailDrop: (subject: string) => void;
+  aiState: AiWorkflowState;
+  onAiAnalyze: (emailContext: AiEmailContext) => void;
+  onAiSelectAction: (actionPrompt: string) => void;
+  onAiConfirm: (editedDraft: string) => void;
+  onAiEditDraft: (draft: string) => void;
+  onAiEditSubject: (subject: string) => void;
+  onAiAddTodo: (candidate: { text: string; notes?: string }) => void;
+  onAiAddEvent: (candidate: { title: string; date: string; startTime: string; endTime?: string }) => void;
+  onAiSend: () => void;
+  onAiSaveDraft: () => void;
+  onAiReset: () => void;
+  onAiBack: () => void;
+  onMailContentChange: (content: string) => void;
 }
 
-export function MainEditor({ onMailLoaded, onAppleMailDrop }: MainEditorProps) {
+export function MainEditor({
+  onMailLoaded,
+  onAppleMailDrop,
+  aiState,
+  onAiAnalyze,
+  onAiSelectAction,
+  onAiConfirm,
+  onAiEditDraft,
+  onAiEditSubject,
+  onAiAddTodo,
+  onAiAddEvent,
+  onAiSend,
+  onAiSaveDraft,
+  onAiReset,
+  onAiBack,
+  onMailContentChange,
+}: MainEditorProps) {
   const [mailContent, setMailContent] = useState("");
   const [source, setSource] = useState("");
   const [showSparkle, setShowSparkle] = useState(false);
   const [externalDragOver, setExternalDragOver] = useState(false);
-  // Track content origin: "paste" for typed/pasted/text-drop, "sidebar" for sidebar email D&D
   const [contentOrigin, setContentOrigin] = useState<"paste" | "sidebar" | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const lastEmailRef = useRef<AiEmailContext | null>(null);
 
   const hasContent = mailContent.trim().length > 0;
+  const aiActive = aiState.step !== "idle";
 
   const triggerSparkle = useCallback(() => {
     setShowSparkle(true);
@@ -45,8 +77,9 @@ export function MainEditor({ onMailLoaded, onAppleMailDrop }: MainEditorProps) {
     setMailContent(text);
     setSource(src);
     onMailLoaded(text, src);
+    onMailContentChange(text);
     triggerSparkle();
-  }, [onMailLoaded, triggerSparkle]);
+  }, [onMailLoaded, onMailContentChange, triggerSparkle]);
 
   const handleFile = useCallback(async (file: File) => {
     const ext = file.name.split(".").pop()?.toLowerCase();
@@ -73,7 +106,6 @@ export function MainEditor({ onMailLoaded, onAppleMailDrop }: MainEditorProps) {
     accept: { "message/rfc822": [".eml"], "text/plain": [".txt"] },
   });
 
-  // Custom event for external drags
   useEffect(() => {
     const dragCounter = { current: 0 };
 
@@ -95,7 +127,6 @@ export function MainEditor({ onMailLoaded, onAppleMailDrop }: MainEditorProps) {
       const detail = (e as CustomEvent<DropDetail>).detail;
       if (detail.files.length > 0) return;
 
-      // Internal sidebar drag with structured email data
       const emailJson = detail.data["application/x-dragop-email"];
       if (emailJson) {
         try {
@@ -103,6 +134,18 @@ export function MainEditor({ onMailLoaded, onAppleMailDrop }: MainEditorProps) {
           const formatted = `件名: ${email.subject}\n差出人: ${email.sender} <${email.senderEmail}>\n\n${email.body}`;
           setContentOrigin("sidebar");
           loadContent(formatted, email.subject);
+          lastEmailRef.current = {
+            sender: email.sender,
+            senderEmail: email.senderEmail,
+            subject: email.subject,
+            body: email.body,
+          };
+          onAiAnalyze({
+            sender: email.sender,
+            senderEmail: email.senderEmail,
+            subject: email.subject,
+            body: email.body,
+          });
           return;
         } catch { /* fall through */ }
       }
@@ -129,10 +172,65 @@ export function MainEditor({ onMailLoaded, onAppleMailDrop }: MainEditorProps) {
       document.removeEventListener("dragleave", onDragLeave, true);
       window.removeEventListener("dragop-drop", onCustomDrop);
     };
-  }, [loadContent, onAppleMailDrop]);
+  }, [loadContent, onAppleMailDrop, onAiAnalyze]);
+
+  const handleAnalyzeClick = useCallback(() => {
+    const lines = mailContent.split("\n");
+    let sender = "";
+    let senderEmail = "";
+    let subject = "";
+    let bodyStart = 0;
+
+    for (let i = 0; i < Math.min(lines.length, 10); i++) {
+      const line = lines[i];
+      const subjectMatch = line.match(/^(?:件名|Subject)\s*[:：]\s*(.+)/i);
+      if (subjectMatch) { subject = subjectMatch[1].trim(); bodyStart = Math.max(bodyStart, i + 1); continue; }
+      const fromMatch = line.match(/^(?:差出人|From)\s*[:：]\s*(.+)/i);
+      if (fromMatch) {
+        const fromStr = fromMatch[1].trim();
+        const emailMatch = fromStr.match(/<([^>]+)>/);
+        if (emailMatch) {
+          senderEmail = emailMatch[1];
+          sender = fromStr.replace(/<[^>]+>/, "").trim();
+        } else {
+          senderEmail = fromStr;
+          sender = fromStr;
+        }
+        bodyStart = Math.max(bodyStart, i + 1);
+        continue;
+      }
+      if (line.trim() === "" && bodyStart > 0) { bodyStart = Math.max(bodyStart, i + 1); break; }
+    }
+
+    const body = lines.slice(bodyStart).join("\n").trim() || mailContent;
+
+    onAiAnalyze({
+      sender: sender || "不明",
+      senderEmail: senderEmail || "",
+      subject: subject || source || "（件名なし）",
+      body,
+    });
+  }, [mailContent, source, onAiAnalyze]);
+
+  const handleAiReset = useCallback(() => {
+    setMailContent("");
+    setSource("");
+    setContentOrigin(null);
+    lastEmailRef.current = null;
+    onMailContentChange("");
+    onAiReset();
+  }, [onAiReset, onMailContentChange]);
 
   const isOver = isDragActive || externalDragOver;
   const rootProps = getRootProps();
+
+  const stepIndex = (() => {
+    if (aiState.step === "idle") return 0;
+    if (aiState.step === "step1-loading" || aiState.step === "step1") return 1;
+    if (aiState.step === "step2-loading" || aiState.step === "step2") return 2;
+    if (aiState.step === "step3-loading" || aiState.step === "step3") return 3;
+    return 0;
+  })();
 
   return (
     <div className="flex h-full flex-col">
@@ -160,8 +258,29 @@ export function MainEditor({ onMailLoaded, onAppleMailDrop }: MainEditorProps) {
         <input {...getInputProps()} />
 
         <AnimatePresence mode="wait">
-          {!hasContent ? (
-            /* Drop zone guide */
+          {aiActive ? (
+            <motion.div
+              key="ai-panel"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              className="flex flex-1 flex-col"
+            >
+              <AiPanel
+                aiState={aiState}
+                onSelectAction={onAiSelectAction}
+                onConfirm={onAiConfirm}
+                onEditDraft={onAiEditDraft}
+                onEditSubject={onAiEditSubject}
+                onAddTodo={onAiAddTodo}
+                onAddEvent={onAiAddEvent}
+                onSend={onAiSend}
+                onSaveDraft={onAiSaveDraft}
+                onReset={handleAiReset}
+                onBack={onAiBack}
+              />
+            </motion.div>
+          ) : !hasContent ? (
             <motion.div
               key="drop-guide"
               initial={{ opacity: 0 }}
@@ -189,12 +308,15 @@ export function MainEditor({ onMailLoaded, onAppleMailDrop }: MainEditorProps) {
                 {isOver ? "ドロップしてください" : "解析するメールをドラッグ＆ドロップ"}
               </p>
 
-              {/* Inline input hint */}
               <textarea
                 ref={textareaRef}
                 placeholder="またはメールを貼り付ける"
                 value={mailContent}
-                onChange={(e) => { setMailContent(e.target.value); setContentOrigin("paste"); }}
+                onChange={(e) => {
+                  setMailContent(e.target.value);
+                  setContentOrigin("paste");
+                  onMailContentChange(e.target.value);
+                }}
                 className="mt-4 w-full max-w-md resize-none rounded-xl border border-border-default
                            bg-transparent px-4 py-3 text-sm text-text-primary text-center placeholder:text-text-muted
                            focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue/30
@@ -203,25 +325,25 @@ export function MainEditor({ onMailLoaded, onAppleMailDrop }: MainEditorProps) {
               />
             </motion.div>
           ) : (
-            /* Content view */
             <motion.div
               key="content-view"
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               className="flex flex-1 flex-col"
             >
-              {/* Content area */}
               <div className="flex-1 overflow-y-auto p-5">
                 <textarea
                   value={mailContent}
-                  onChange={(e) => setMailContent(e.target.value)}
+                  onChange={(e) => {
+                    setMailContent(e.target.value);
+                    onMailContentChange(e.target.value);
+                  }}
                   className="h-full w-full resize-none bg-transparent text-sm leading-relaxed text-text-primary
                              placeholder:text-text-muted focus:outline-none"
                   placeholder="またはメールを貼り付ける"
                 />
               </div>
 
-              {/* Help icon */}
               <div className="absolute right-3 top-3">
                 <button className="rounded-full p-1.5 text-text-muted hover:bg-border-default hover:text-text-primary transition-colors">
                   <HelpCircle className="h-4 w-4" />
@@ -231,9 +353,9 @@ export function MainEditor({ onMailLoaded, onAppleMailDrop }: MainEditorProps) {
           )}
         </AnimatePresence>
 
-        {/* Bottom toolbar — show 解析 button only for pasted/typed content */}
+        {/* Bottom toolbar */}
         <AnimatePresence>
-          {hasContent && contentOrigin === "paste" && (
+          {hasContent && !aiActive && contentOrigin === "paste" && (
             <motion.div
               initial={{ height: 0, opacity: 0 }}
               animate={{ height: "auto", opacity: 1 }}
@@ -242,7 +364,10 @@ export function MainEditor({ onMailLoaded, onAppleMailDrop }: MainEditorProps) {
               className="overflow-hidden"
             >
               <div className="flex items-center justify-end border-t border-border-default px-4 py-3">
-                <button className="flex items-center gap-1.5 rounded-lg bg-brand-blue/10 px-3 py-1.5 text-xs font-medium text-brand-blue hover:bg-brand-blue/20 transition-colors dark:bg-brand-blue/15">
+                <button
+                  onClick={handleAnalyzeClick}
+                  className="flex items-center gap-1.5 rounded-lg bg-brand-blue/10 px-3 py-1.5 text-xs font-medium text-brand-blue hover:bg-brand-blue/20 transition-colors dark:bg-brand-blue/15"
+                >
                   <Sparkles className="h-3.5 w-3.5" />
                   解析
                 </button>
@@ -252,10 +377,19 @@ export function MainEditor({ onMailLoaded, onAppleMailDrop }: MainEditorProps) {
         </AnimatePresence>
 
         {/* Progress dots */}
-        {hasContent && (
+        {(hasContent || aiActive) && (
           <div className="flex justify-center gap-1.5 pb-3">
-            {[0, 1, 2, 3, 4].map((i) => (
-              <div key={i} className="h-1.5 w-1.5 rounded-full bg-brand-blue" />
+            {[0, 1, 2, 3].map((i) => (
+              <div
+                key={i}
+                className={`h-1.5 rounded-full transition-all duration-300 ${
+                  i === stepIndex
+                    ? "w-4 bg-brand-blue"
+                    : i < stepIndex
+                    ? "w-1.5 bg-brand-blue/60"
+                    : "w-1.5 bg-brand-blue/20"
+                }`}
+              />
             ))}
           </div>
         )}

@@ -35,7 +35,11 @@ export async function fetchTaskLists(accessToken: string): Promise<GTaskList[]> 
   const res = await fetch(`${TASKS_API}/users/@me/lists?maxResults=100`, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
-  if (!res.ok) throw new Error(`Tasks API lists error: ${res.status}`);
+  if (!res.ok) {
+    const text = await res.text();
+    console.error("[Dragop] Tasks API lists error:", res.status, text);
+    throw new Error(`Tasks API lists error: ${res.status} - ${text}`);
+  }
   const data: GTaskListsResponse = await res.json();
   return data.items ?? [];
 }
@@ -44,8 +48,17 @@ export async function fetchTaskLists(accessToken: string): Promise<GTaskList[]> 
  * Get the default task list ID (first one, usually "@default").
  */
 export async function getDefaultTaskListId(accessToken: string): Promise<string> {
-  const lists = await fetchTaskLists(accessToken);
-  return lists[0]?.id ?? "@default";
+  try {
+    const lists = await fetchTaskLists(accessToken);
+    if (lists.length === 0) {
+      console.warn("[Dragop] No task lists found, using @default");
+      return "@default";
+    }
+    return lists[0]?.id ?? "@default";
+  } catch (err) {
+    console.error("[Dragop] Failed to get default task list ID:", err);
+    throw err;
+  }
 }
 
 /**
@@ -57,7 +70,13 @@ export async function fetchTasks(
   maxResults = 30,
   listId?: string,
 ): Promise<GTaskItem[]> {
-  const resolvedListId = listId ?? await getDefaultTaskListId(accessToken);
+  let resolvedListId: string;
+  try {
+    resolvedListId = listId ?? await getDefaultTaskListId(accessToken);
+  } catch (err) {
+    console.error("[Dragop] Failed to resolve task list ID:", err);
+    throw new Error(`Failed to get task list: ${err instanceof Error ? err.message : String(err)}`);
+  }
 
   // Fetch incomplete tasks
   const incompleteParams = new URLSearchParams({
@@ -72,8 +91,8 @@ export async function fetchTasks(
 
   if (!res.ok) {
     const text = await res.text();
-    console.warn("[Dragop] Tasks API error:", res.status, text);
-    throw new Error(`Tasks API error: ${res.status}`);
+    console.error("[Dragop] Tasks API error:", res.status, text);
+    throw new Error(`Tasks API error: ${res.status} - ${text}`);
   }
 
   const data: GTaskListResponse = await res.json();
@@ -98,7 +117,13 @@ export async function addTask(
   title: string,
   listId?: string,
 ): Promise<GTaskItem> {
-  const resolvedListId = listId ?? await getDefaultTaskListId(accessToken);
+  let resolvedListId: string;
+  try {
+    resolvedListId = listId ?? await getDefaultTaskListId(accessToken);
+  } catch (err) {
+    console.error("[Dragop] Failed to resolve task list ID for add:", err);
+    throw new Error(`Failed to get task list: ${err instanceof Error ? err.message : String(err)}`);
+  }
 
   const res = await fetch(`${TASKS_API}/lists/${encodeURIComponent(resolvedListId)}/tasks`, {
     method: "POST",
@@ -111,7 +136,8 @@ export async function addTask(
 
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`Tasks API add error: ${res.status} ${text}`);
+    console.error("[Dragop] Tasks API add error:", res.status, text);
+    throw new Error(`Tasks API add error: ${res.status} - ${text}`);
   }
 
   return res.json();
@@ -126,7 +152,13 @@ export async function toggleTask(
   currentlyCompleted: boolean,
   listId?: string,
 ): Promise<GTaskItem> {
-  const resolvedListId = listId ?? await getDefaultTaskListId(accessToken);
+  let resolvedListId: string;
+  try {
+    resolvedListId = listId ?? await getDefaultTaskListId(accessToken);
+  } catch (err) {
+    console.error("[Dragop] Failed to resolve task list ID for toggle:", err);
+    throw new Error(`Failed to get task list: ${err instanceof Error ? err.message : String(err)}`);
+  }
   const newStatus = currentlyCompleted ? "needsAction" : "completed";
 
   const res = await fetch(`${TASKS_API}/lists/${encodeURIComponent(resolvedListId)}/tasks/${encodeURIComponent(taskId)}`, {
@@ -143,7 +175,8 @@ export async function toggleTask(
 
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`Tasks API toggle error: ${res.status} ${text}`);
+    console.error("[Dragop] Tasks API toggle error:", res.status, text);
+    throw new Error(`Tasks API toggle error: ${res.status} - ${text}`);
   }
 
   return res.json();
@@ -158,7 +191,13 @@ export async function updateTask(
   updates: { title?: string; notes?: string },
   listId?: string,
 ): Promise<GTaskItem> {
-  const resolvedListId = listId ?? await getDefaultTaskListId(accessToken);
+  let resolvedListId: string;
+  try {
+    resolvedListId = listId ?? await getDefaultTaskListId(accessToken);
+  } catch (err) {
+    console.error("[Dragop] Failed to resolve task list ID for update:", err);
+    throw new Error(`Failed to get task list: ${err instanceof Error ? err.message : String(err)}`);
+  }
 
   const res = await fetch(`${TASKS_API}/lists/${encodeURIComponent(resolvedListId)}/tasks/${encodeURIComponent(taskId)}`, {
     method: "PATCH",
@@ -171,7 +210,8 @@ export async function updateTask(
 
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`Tasks API update error: ${res.status} ${text}`);
+    console.error("[Dragop] Tasks API update error:", res.status, text);
+    throw new Error(`Tasks API update error: ${res.status} - ${text}`);
   }
 
   return res.json();
