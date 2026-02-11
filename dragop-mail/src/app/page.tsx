@@ -105,6 +105,11 @@ function migrateOldSession() {
 // No more demo events — real Google Calendar events fetched via API
 
 export default function Home() {
+  const ORIGINAL_MAIL_PANEL_WIDTH = 320;
+  const FINAL_CHECK_PANEL_WIDTH = 240;
+  const CENTER_EDITOR_WIDTH = 768;
+  const CENTER_CONTENT_TOP_OFFSET = 52;
+
   // Layout state
   const [leftOpen, setLeftOpen] = useState(false);
   const [rightOpen, setRightOpen] = useState(true);
@@ -942,9 +947,12 @@ export default function Home() {
     activeLabelTotal,
   };
 
+  const showOriginalMailPanel = aiState.step !== "idle" && aiMailContent.trim().length > 0;
+  const showFinalCheckPanel = aiState.step === "step3-loading" || aiState.step === "step3";
+
   return (
     <div className="flex h-screen flex-col bg-surface transition-colors duration-300">
-      <div className="flex flex-1 overflow-hidden">
+      <div className="relative flex flex-1 overflow-hidden">
         {/* Left sidebar — mobile overlay */}
         <AnimatePresence>
           {leftOpen && (
@@ -971,7 +979,7 @@ export default function Home() {
 
         {/* Left sidebar — desktop */}
         <div
-          className="relative hidden shrink-0 border-r border-border-default bg-surface lg:block"
+          className="relative z-30 hidden shrink-0 border-r border-border-default bg-surface lg:block"
           style={{ width: leftWidth }}
         >
           <LeftSidebar {...leftSidebarProps} />
@@ -993,76 +1001,98 @@ export default function Home() {
           />
         </div>
 
-        {/* Original mail panel — between left sidebar and center */}
-        <AnimatePresence>
-          {aiState.step !== "idle" && aiMailContent.trim().length > 0 && (
-            <motion.div
-              initial={{ width: 0, opacity: 0 }}
-              animate={{ width: 240, opacity: 1 }}
-              exit={{ width: 0, opacity: 0 }}
-              transition={{ type: "spring", stiffness: 300, damping: 30 }}
-              className="hidden shrink-0 overflow-hidden lg:block"
-            >
-              <div className="flex h-full flex-col border-r border-border-default bg-surface">
-                <div className="flex items-center gap-1.5 border-b border-border-default px-3 py-2">
-                  <MailIcon className="h-3.5 w-3.5 text-text-muted" />
-                  <span className="text-xs font-medium text-text-muted uppercase tracking-wider">元メール</span>
-                </div>
-                <div className="flex-1 overflow-y-auto p-3">
-                  <div className="whitespace-pre-wrap text-xs leading-relaxed text-text-secondary">
-                    {aiMailContent}
+        {/* Center workspace (expands with side cards) */}
+        <main className="min-w-0 flex-1 overflow-y-auto px-4 pt-14 pb-14 lg:px-6">
+          <div className="mx-auto flex h-full w-full justify-center gap-3 xl:gap-4">
+            <AnimatePresence>
+              {showOriginalMailPanel && (
+                <motion.div
+                  initial={{ width: 0, opacity: 0, x: -12 }}
+                  animate={{ width: ORIGINAL_MAIL_PANEL_WIDTH, opacity: 1, x: 0 }}
+                  exit={{ width: 0, opacity: 0, x: -12 }}
+                  transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                  className="hidden shrink-0 overflow-hidden rounded-2xl border border-border-default bg-surface-raised/80 shadow-lg shadow-black/10 dark:bg-surface-raised dark:shadow-black/20 xl:flex"
+                  style={{
+                    marginTop: CENTER_CONTENT_TOP_OFFSET,
+                    height: `calc(100% - ${CENTER_CONTENT_TOP_OFFSET}px)`,
+                  }}
+                >
+                  <div className="flex h-full min-h-0 w-full flex-col">
+                    <div className="flex items-center justify-between border-b border-border-default px-3 py-2">
+                      <div className="flex items-center gap-1.5">
+                        <MailIcon className="h-3.5 w-3.5 text-text-muted" />
+                        <span className="text-xs font-medium text-text-muted uppercase tracking-wider">元メール</span>
+                      </div>
+                      <span className="text-[10px] text-text-muted">Source</span>
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-3">
+                      <div className="whitespace-pre-wrap text-xs leading-relaxed text-text-secondary">
+                        {aiMailContent}
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
-        {/* Center */}
-        <main className="flex-1 overflow-y-auto px-4 lg:px-6 pt-14 pb-14">
-          <div className="mx-auto h-full max-w-3xl">
-            <MainEditor
-              onMailLoaded={handleMailLoaded}
-              onAppleMailDrop={handleAppleMailDrop}
-              aiState={aiState}
-              onAiAnalyze={handleAiAnalyze}
-              onAiSelectAction={handleAiSelectAction}
-              onAiConfirm={handleAiConfirm}
-              onAiEditDraft={handleAiEditDraft}
-              onAiEditSubject={handleAiEditSubject}
-              onAiAddTodo={handleAiAddTodo}
-              onAiAddEvent={handleAiAddEvent}
-              onAiSend={handleAiSend}
-              onAiSaveDraft={handleAiSaveDraft}
-              onAiReset={handleAiReset}
-              onAiBack={handleAiBack}
-              onMailContentChange={setAiMailContent}
-            />
+            <div
+              className="min-w-0 w-full max-w-3xl shrink-0 xl:max-w-none"
+              style={{ width: `min(100%, ${CENTER_EDITOR_WIDTH}px)` }}
+            >
+              <MainEditor
+                onMailLoaded={handleMailLoaded}
+                onAppleMailDrop={handleAppleMailDrop}
+                aiState={aiState}
+                onAiAnalyze={handleAiAnalyze}
+                onAiSelectAction={handleAiSelectAction}
+                onAiConfirm={handleAiConfirm}
+                onAiEditDraft={handleAiEditDraft}
+                onAiEditSubject={handleAiEditSubject}
+                onAiAddTodo={handleAiAddTodo}
+                onAiAddEvent={handleAiAddEvent}
+                onAiSend={handleAiSend}
+                onAiSaveDraft={handleAiSaveDraft}
+                onAiReset={handleAiReset}
+                onAiBack={handleAiBack}
+                onMailContentChange={setAiMailContent}
+              />
+            </div>
+
+            <AnimatePresence>
+              {showFinalCheckPanel && (
+                <motion.div
+                  initial={{ width: 0, opacity: 0, x: 12 }}
+                  animate={{ width: FINAL_CHECK_PANEL_WIDTH, opacity: 1, x: 0 }}
+                  exit={{ width: 0, opacity: 0, x: 12 }}
+                  transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                  className="hidden shrink-0 overflow-hidden rounded-2xl border border-border-default bg-surface-raised/80 shadow-lg shadow-black/10 dark:bg-surface-raised dark:shadow-black/20 xl:flex"
+                  style={{
+                    marginTop: CENTER_CONTENT_TOP_OFFSET,
+                    height: `calc(100% - ${CENTER_CONTENT_TOP_OFFSET}px)`,
+                  }}
+                >
+                  <div className="flex h-full min-h-0 w-full flex-col">
+                    <div className="flex items-center gap-1.5 border-b border-border-default px-3 py-2">
+                      <SparklesIcon className="h-3.5 w-3.5 text-brand-blue" />
+                      <span className="text-xs font-medium text-text-muted uppercase tracking-wider">最終チェック</span>
+                    </div>
+                    <div className="min-h-0 flex-1">
+                      <Step3Sidebar
+                        result={aiState.step3Result}
+                        isLoading={aiState.step === "step3-loading"}
+                        onAddTodo={handleAiAddTodo}
+                        onAddEvent={handleAiAddEvent}
+                      />
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </main>
 
-        {/* Step3 sidebar — between center and right sidebar buttons */}
-        <AnimatePresence>
-          {(aiState.step === "step3-loading" || aiState.step === "step3") && (
-            <motion.div
-              initial={{ width: 0, opacity: 0 }}
-              animate={{ width: 240, opacity: 1 }}
-              exit={{ width: 0, opacity: 0 }}
-              transition={{ type: "spring", stiffness: 300, damping: 30 }}
-              className="hidden shrink-0 overflow-hidden border-l border-border-default bg-surface md:block"
-            >
-              <Step3Sidebar
-                result={aiState.step3Result}
-                isLoading={aiState.step === "step3-loading"}
-                onAddTodo={handleAiAddTodo}
-                onAddEvent={handleAiAddEvent}
-              />
-            </motion.div>
-          )}
-        </AnimatePresence>
-
         {/* Buttons to the left of calendar (always visible, outside sidebar) */}
-        <div className="hidden shrink-0 flex-col items-center gap-2 px-2 pt-4 md:flex">
+        <div className="relative z-20 hidden shrink-0 flex-col items-center gap-2 px-2 pt-4 lg:flex">
           <ThemeToggle />
           <button
             onClick={() => setRightOpen(!rightOpen)}
@@ -1081,7 +1111,7 @@ export default function Home() {
               animate={{ width: 280, opacity: 1 }}
               exit={{ width: 0, opacity: 0 }}
               transition={{ type: "spring", stiffness: 300, damping: 30 }}
-              className="hidden shrink-0 overflow-hidden border-l border-border-default bg-surface md:block relative"
+              className="relative z-20 hidden shrink-0 overflow-hidden border-l border-border-default bg-surface lg:block"
             >
               <div className="flex h-full flex-col">
                 {/* Calendar */}
