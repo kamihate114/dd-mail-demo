@@ -733,16 +733,16 @@ export default function Home() {
     // Apple Mail drop — body not available, subject only
   }, []);
 
-  const handleAddTodo = useCallback(async (text: string) => {
+  const handleAddTodo = useCallback(async (text: string, notes?: string) => {
     const tempId = generateId();
-    setTodos((prev) => [{ id: tempId, text, done: false }, ...prev]);
+    setTodos((prev) => [{ id: tempId, text, notes, done: false }, ...prev]);
     const p = getActiveProvider();
     const token = p ? getSavedTokenFor(p) : null;
     if (token && p) {
       try {
         const task = p === "gmail"
-          ? await addTask(token, text, activeTaskListId)
-          : await addMsTask(token, text, activeTaskListId);
+          ? await addTask(token, text, activeTaskListId, notes)
+          : await addMsTask(token, text, activeTaskListId, notes);
         setTodos((prev) => prev.map((t) => t.id === tempId ? { ...t, id: task.id } : t));
       } catch (err) {
         console.warn("[Dragop] Add task failed:", err);
@@ -859,8 +859,10 @@ export default function Home() {
   }, []);
 
   const handleAiConfirm = useCallback(async (editedDraft: string) => {
+    console.log("[Dragop] handleAiConfirm called with draft length:", editedDraft.length);
     setAiState((prev) => ({ ...prev, step: "step3-loading" }));
     try {
+      console.log("[Dragop] Calling AI API for step 3...");
       const data = await callAiApi({
         step: 3,
         emailContext: aiState.emailContext!,
@@ -869,19 +871,23 @@ export default function Home() {
         step2Result: aiState.step2Result!,
         editedDraft,
       });
+      console.log("[Dragop] AI API response:", data);
       if (data.step3) {
+        console.log("[Dragop] Step 3 result received:", data.step3);
         setAiState((prev) => ({ ...prev, step: "step3", step3Result: data.step3! }));
       } else {
+        console.warn("[Dragop] Step 3 result missing in response");
         throw new Error("最終確認の結果が取得できませんでした。時間をおいて再試行してください。");
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      console.error("[Dragop] Step 3 error:", err);
       setAiState((prev) => ({ ...prev, step: "step2", error: msg }));
     }
   }, [callAiApi, aiState.emailContext, aiState.step1Result, aiState.selectedAction, aiState.step2Result]);
 
   const handleAiAddTodo = useCallback((candidate: { text: string; notes?: string }) => {
-    handleAddTodo(candidate.text);
+    handleAddTodo(candidate.text, candidate.notes);
   }, [handleAddTodo]);
 
   const handleAiAddEvent = useCallback((candidate: { title: string; date: string; startTime: string; endTime?: string }) => {
@@ -974,7 +980,11 @@ export default function Home() {
   }, []);
 
   // Compute saved providers for login screen (show restore options); re-run after full logout via savedProvidersVersion
-  const savedProviders = useMemo(() => getSavedProviders(), [mailLoggedIn, savedProvidersVersion]);
+  const [savedProviders, setSavedProviders] = useState<("outlook" | "gmail")[]>([]);
+
+  useEffect(() => {
+    setSavedProviders(getSavedProviders());
+  }, [mailLoggedIn, savedProvidersVersion]);
 
   // Shared left sidebar props
   const leftSidebarProps = {

@@ -91,6 +91,7 @@ export async function addMsTask(
   accessToken: string,
   title: string,
   listId?: string,
+  notes?: string,
 ): Promise<MsTaskItem> {
   const resolvedListId = listId ?? await getDefaultMsTaskListId(accessToken);
 
@@ -100,7 +101,11 @@ export async function addMsTask(
       Authorization: `Bearer ${accessToken}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ title, status: "notStarted" }),
+    body: JSON.stringify({
+      title,
+      status: "notStarted",
+      ...(notes ? { body: { content: notes, contentType: "text" } } : {}),
+    }),
   });
 
   if (!res.ok) {

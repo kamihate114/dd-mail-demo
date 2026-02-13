@@ -78,14 +78,13 @@ function buildMessages(body: AiApiRequest): Msg[] {
   return msgs;
 }
 
-async function callGPT(messages: Msg[], effort: string, maxTokens: number): Promise<string> {
+async function callGPT(messages: Msg[], _effort: string, maxTokens: number): Promise<string> {
   const completion = await openai.chat.completions.create({
     model: MODEL,
     response_format: { type: "json_object" },
     messages: messages as Array<OpenAI.Chat.Completions.ChatCompletionMessageParam>,
-    reasoning_effort: effort,
     max_completion_tokens: maxTokens,
-  } as unknown as OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming) as ChatCompletion;
+  } as OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming) as ChatCompletion;
 
   return completion.choices[0]?.message?.content || "{}";
 }

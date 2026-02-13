@@ -116,6 +116,7 @@ export async function addTask(
   accessToken: string,
   title: string,
   listId?: string,
+  notes?: string,
 ): Promise<GTaskItem> {
   let resolvedListId: string;
   try {
@@ -131,7 +132,11 @@ export async function addTask(
       Authorization: `Bearer ${accessToken}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ title, status: "needsAction" }),
+    body: JSON.stringify({
+      title,
+      status: "needsAction",
+      ...(notes ? { notes } : {}),
+    }),
   });
 
   if (!res.ok) {
