@@ -118,6 +118,9 @@ export async function POST(request: NextRequest): Promise<NextResponse<AiApiResp
       const raw = await callGPT(messages, "low", 2000);
       const parsed = JSON.parse(stripCodeFence(raw)) as AiStep1Result;
 
+      // Ensure arrays exist
+      parsed.extractedTodos = parsed.extractedTodos || [];
+
       // Ensure exactly 3 actions
       if (!parsed.suggestedActions || parsed.suggestedActions.length < 3) {
         parsed.suggestedActions = [
@@ -141,8 +144,12 @@ export async function POST(request: NextRequest): Promise<NextResponse<AiApiResp
     }
 
     if (step === 3) {
-      const raw = await callGPT(messages, "low", 2000);
+      console.log(`[AI Route] step=3 messages:`, JSON.stringify(messages, null, 2).substring(0, 1000));
+      const raw = await callGPT(messages, "low", 4000);
+      console.log(`[AI Route] step=3 raw response length:`, raw.length);
+      console.log(`[AI Route] step=3 raw response:`, raw);
       const parsed = JSON.parse(stripCodeFence(raw)) as AiStep3Result;
+      console.log(`[AI Route] step=3 parsed:`, JSON.stringify(parsed, null, 2));
 
       // Ensure arrays exist
       parsed.todoCandidates = parsed.todoCandidates || [];

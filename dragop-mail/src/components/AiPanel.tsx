@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Sparkles,
@@ -48,7 +48,20 @@ interface AiPanelProps {
    Shared
    ================================================================ */
 
-function LoadingView({ message }: { message: string }) {
+function LoadingView({ message, messages }: { message?: string; messages?: string[] }) {
+  const [currentMessageIndex, setCurrentMessageIndex] = useState(0);
+  const displayMessages = messages || [message || "処理中..."];
+
+  useEffect(() => {
+    if (!messages || messages.length <= 1) return;
+
+    const interval = setInterval(() => {
+      setCurrentMessageIndex((prev) => (prev + 1) % messages.length);
+    }, 3000); // 3秒ごとにメッセージを切り替え
+
+    return () => clearInterval(interval);
+  }, [messages]);
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -60,7 +73,18 @@ function LoadingView({ message }: { message: string }) {
         <Loader2 className="h-8 w-8 animate-spin text-brand-blue" />
         <Sparkles className="absolute -right-1 -top-1 h-4 w-4 text-brand-blue/60" />
       </div>
-      <p className="text-sm text-text-secondary">{message}</p>
+      <AnimatePresence mode="wait">
+        <motion.p
+          key={currentMessageIndex}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -10 }}
+          transition={{ duration: 0.3 }}
+          className="text-sm text-text-secondary text-center"
+        >
+          {displayMessages[currentMessageIndex]}
+        </motion.p>
+      </AnimatePresence>
     </motion.div>
   );
 }
@@ -604,7 +628,18 @@ export function AiPanel({
       )}
 
       {aiState.step === "step1-loading" && (
-        <LoadingView key="loading1" message="メールを分析中..." />
+        <LoadingView
+          key="loading1"
+          messages={[
+            "メールの重要ポイントをスキャンしています...",
+            "送り主が最も伝えたいことを読み取っています...",
+            "文脈から緊急度と重要度を判定しています...",
+            "返信が必要な項目をピックアップしています...",
+            "期限や具体的なタスクを整理しています...",
+            "あなたが次に取るべきアクションを特定中です...",
+            "パッと見て理解できる形式に整えています...",
+          ]}
+        />
       )}
 
       {aiState.step === "step1" && aiState.step1Result && (
