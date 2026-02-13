@@ -871,6 +871,8 @@ export default function Home() {
       });
       if (data.step3) {
         setAiState((prev) => ({ ...prev, step: "step3", step3Result: data.step3! }));
+      } else {
+        throw new Error("最終確認の結果が取得できませんでした。時間をおいて再試行してください。");
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

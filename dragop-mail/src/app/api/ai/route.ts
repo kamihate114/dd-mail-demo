@@ -110,6 +110,8 @@ export async function POST(request: NextRequest): Promise<NextResponse<AiApiResp
     return NextResponse.json({ error: "必須パラメータが不足しています。" }, { status: 400 });
   }
 
+  const startedAt = Date.now();
+
   try {
     const messages = buildMessages(body);
 
@@ -128,17 +130,19 @@ export async function POST(request: NextRequest): Promise<NextResponse<AiApiResp
         ].slice(0, 3);
       }
 
+      console.log(`[AI Route] step=1 ok in ${Date.now() - startedAt}ms`);
       return NextResponse.json({ step1: parsed });
     }
 
     if (step === 2) {
       const raw = await callGPT(messages, "medium", 3000);
       const parsed = JSON.parse(stripCodeFence(raw)) as AiStep2Result;
+      console.log(`[AI Route] step=2 ok in ${Date.now() - startedAt}ms`);
       return NextResponse.json({ step2: parsed });
     }
 
     if (step === 3) {
-      const raw = await callGPT(messages, "medium", 2000);
+      const raw = await callGPT(messages, "low", 2000);
       const parsed = JSON.parse(stripCodeFence(raw)) as AiStep3Result;
 
       // Ensure arrays exist
@@ -146,13 +150,14 @@ export async function POST(request: NextRequest): Promise<NextResponse<AiApiResp
       parsed.calendarCandidates = parsed.calendarCandidates || [];
       parsed.checks = parsed.checks || [];
 
+      console.log(`[AI Route] step=3 ok in ${Date.now() - startedAt}ms`);
       return NextResponse.json({ step3: parsed });
     }
 
     return NextResponse.json({ error: "無効なステップです。" }, { status: 400 });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error("[AI Route] Error:", message);
+    console.error(`[AI Route] step=${step} failed in ${Date.now() - startedAt}ms:`, message);
     return NextResponse.json({ error: `AI処理でエラーが発生しました: ${message}` }, { status: 500 });
   }
 }
