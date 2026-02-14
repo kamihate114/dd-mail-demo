@@ -20,8 +20,11 @@ import {
   CalendarPlus,
   Zap,
   Clock,
-  Target,
   Info,
+  Square,
+  CheckSquare,
+  Settings2,
+  X,
 } from "lucide-react";
 import {
   AiWorkflowState,
@@ -160,6 +163,82 @@ function ComposeHeader({
 }
 
 /* ================================================================
+   Signature hook & popover
+   ================================================================ */
+
+const SIGNATURE_KEY = "dragop-mail-signature";
+
+function useSignature() {
+  const [signature, setSignature] = useState(() => {
+    if (typeof window === "undefined") return "";
+    return localStorage.getItem(SIGNATURE_KEY) || "";
+  });
+
+  const save = (val: string) => {
+    setSignature(val);
+    localStorage.setItem(SIGNATURE_KEY, val);
+  };
+
+  return [signature, save] as const;
+}
+
+function SignaturePopover({
+  signature,
+  onSave,
+  onClose,
+}: {
+  signature: string;
+  onSave: (s: string) => void;
+  onClose: () => void;
+}) {
+  const [draft, setDraft] = useState(signature);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 6, scale: 0.96 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: 6, scale: 0.96 }}
+      transition={{ duration: 0.15 }}
+      className="absolute bottom-full left-0 mb-2 w-72 rounded-xl border border-border-strong bg-surface dark:bg-[#1e2030] shadow-xl z-50"
+    >
+      <div className="flex items-center justify-between border-b border-border-default px-3 py-2">
+        <span className="text-xs font-medium text-text-secondary">署名を編集</span>
+        <button onClick={onClose} className="text-text-muted hover:text-text-primary transition-colors">
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+      <div className="p-3">
+        <textarea
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          rows={5}
+          placeholder={"例:\n--\n山田 太郎\n株式会社サンプル\ntel: 03-xxxx-xxxx"}
+          className="w-full resize-none rounded-lg border border-border-default bg-surface-raised dark:bg-white/[0.04] px-3 py-2 text-xs leading-relaxed text-text-primary
+                     placeholder:text-text-muted/60 focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue/30 transition-colors"
+        />
+        <div className="mt-2 flex justify-end gap-2">
+          <button
+            onClick={onClose}
+            className="rounded-md px-2.5 py-1 text-[11px] text-text-muted hover:text-text-primary transition-colors"
+          >
+            キャンセル
+          </button>
+          <button
+            onClick={() => {
+              onSave(draft);
+              onClose();
+            }}
+            className="rounded-md bg-brand-blue/10 px-2.5 py-1 text-[11px] font-medium text-brand-blue hover:bg-brand-blue/20 transition-colors"
+          >
+            保存
+          </button>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+/* ================================================================
    Step 1: AI Analysis (no original mail — that's shown externally)
    ================================================================ */
 
@@ -193,6 +272,19 @@ function Step1View({
 }) {
   const [customInput, setCustomInput] = useState("");
   const [isComposing, setIsComposing] = useState(false);
+  const [checkedTodos, setCheckedTodos] = useState<Set<number>>(new Set());
+
+  const toggleTodo = (index: number) => {
+    setCheckedTodos((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+  };
+
+  const totalTodos = result.extractedTodos.length;
+  const doneTodos = checkedTodos.size;
 
   return (
     <motion.div
@@ -203,15 +295,15 @@ function Step1View({
     >
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
 
-        {/* ── AI Summary Card ── */}
+        {/* ── AI Intelligence Card (unified) ── */}
         <motion.div
           initial={{ opacity: 0, scale: 0.97 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.4, ease: "easeOut" }}
-          className="ai-summary-card bg-surface-raised dark:bg-white/[0.03] p-4 space-y-3"
+          className="ai-summary-card bg-surface-raised dark:bg-white/[0.03] p-4 space-y-0"
         >
           {/* Card header: headline + status badge */}
-          <div className="flex items-start justify-between gap-2">
+          <div className="flex items-start justify-between gap-2 mb-3">
             <div className="flex items-center gap-2 min-w-0">
               <Sparkles className="h-4 w-4 shrink-0 text-indigo-500 dark:text-indigo-400" />
               <h2 className="text-lg font-bold text-text-primary truncate leading-tight">
@@ -221,68 +313,94 @@ function Step1View({
             <StatusBadge status={result.status || "確認のみ"} />
           </div>
 
-          {/* Structured summary: situation / expected action / time */}
-          <div className="space-y-2">
-            {/* 状況 */}
-            <div className="flex items-start gap-2.5">
-              <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-indigo-500/10 dark:bg-indigo-500/15">
-                <Info className="h-3 w-3 text-indigo-500 dark:text-indigo-400" />
-              </div>
-              <div className="min-w-0">
-                <div className="text-[10px] font-semibold uppercase tracking-widest text-text-muted/70 mb-0.5">状況</div>
-                <p className="text-sm leading-relaxed text-text-secondary">
-                  {result.structuredSummary?.situation || result.summary}
-                </p>
-              </div>
+          {/* ─ Block 1: 状況 (Situation) ─ */}
+          <div className="flex items-start gap-2.5 pb-3">
+            <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-indigo-500/10 dark:bg-indigo-500/15">
+              <Info className="h-3 w-3 text-indigo-500 dark:text-indigo-400" />
             </div>
-
-            {/* 期待されるアクション */}
-            <div className="flex items-start gap-2.5">
-              <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-violet-500/10 dark:bg-violet-500/15">
-                <Target className="h-3 w-3 text-violet-500 dark:text-violet-400" />
-              </div>
-              <div className="min-w-0">
-                <div className="text-[10px] font-semibold uppercase tracking-widest text-text-muted/70 mb-0.5">期待されるアクション</div>
-                <p className="text-sm leading-relaxed text-text-secondary">
-                  {result.structuredSummary?.expectedAction || "内容をご確認ください。"}
-                </p>
-              </div>
+            <div className="min-w-0">
+              <div className="text-[10px] font-semibold uppercase tracking-widest text-text-muted/70 mb-0.5">状況</div>
+              <p className="text-sm leading-relaxed text-text-secondary">
+                {result.structuredSummary?.situation || result.summary}
+              </p>
             </div>
-
-            {/* 所要時間（あれば） */}
-            {result.structuredSummary?.estimatedTime && (
-              <div className="flex items-start gap-2.5">
-                <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-fuchsia-500/10 dark:bg-fuchsia-500/15">
-                  <Clock className="h-3 w-3 text-fuchsia-500 dark:text-fuchsia-400" />
-                </div>
-                <div className="min-w-0">
-                  <div className="text-[10px] font-semibold uppercase tracking-widest text-text-muted/70 mb-0.5">所要時間</div>
-                  <p className="text-sm leading-relaxed text-text-secondary">
-                    {result.structuredSummary.estimatedTime}
-                  </p>
-                </div>
-              </div>
-            )}
           </div>
+
+          {/* ─ Block 2: 所要時間 (Time) ─ */}
+          {result.structuredSummary?.estimatedTime && (
+            <div className="flex items-start gap-2.5 border-t border-border-default/40 py-3">
+              <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-fuchsia-500/10 dark:bg-fuchsia-500/15">
+                <Clock className="h-3 w-3 text-fuchsia-500 dark:text-fuchsia-400" />
+              </div>
+              <div className="min-w-0">
+                <div className="text-[10px] font-semibold uppercase tracking-widest text-text-muted/70 mb-0.5">所要時間</div>
+                <p className="text-sm leading-relaxed text-text-secondary">
+                  {result.structuredSummary.estimatedTime}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* ─ Block 3: アクション / TODO checklist ─ */}
+          {totalTodos > 0 && (
+            <div className={`border-t border-border-default/40 pt-3 ${result.structuredSummary?.estimatedTime ? "" : ""}`}>
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-violet-500/10 dark:bg-violet-500/15">
+                    <ListTodo className="h-3 w-3 text-violet-500 dark:text-violet-400" />
+                  </div>
+                  <span className="text-[10px] font-semibold uppercase tracking-widest text-text-muted/70">アクション</span>
+                </div>
+                {/* Progress indicator */}
+                <span className="text-[10px] font-medium text-text-muted/60 tabular-nums">
+                  {doneTodos} / {totalTodos}
+                </span>
+              </div>
+
+              {/* Progress bar */}
+              <div className="mb-2.5 h-1 w-full rounded-full bg-border-default/40 overflow-hidden">
+                <motion.div
+                  className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-violet-500"
+                  initial={{ width: 0 }}
+                  animate={{ width: totalTodos > 0 ? `${(doneTodos / totalTodos) * 100}%` : "0%" }}
+                  transition={{ duration: 0.35, ease: "easeOut" }}
+                />
+              </div>
+
+              {/* Checklist items */}
+              <ul className="space-y-1">
+                {result.extractedTodos.map((todo, i) => {
+                  const done = checkedTodos.has(i);
+                  return (
+                    <li key={i}>
+                      <button
+                        type="button"
+                        onClick={() => toggleTodo(i)}
+                        className="flex w-full items-start gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors
+                                   hover:bg-border-default/30 active:bg-border-default/50 group"
+                      >
+                        {done ? (
+                          <CheckSquare className="mt-0.5 h-4 w-4 shrink-0 text-violet-500 dark:text-violet-400 transition-colors" />
+                        ) : (
+                          <Square className="mt-0.5 h-4 w-4 shrink-0 text-text-muted/50 group-hover:text-text-muted transition-colors" />
+                        )}
+                        <span
+                          className={`text-sm leading-relaxed transition-all duration-200 ${
+                            done
+                              ? "line-through text-text-muted/50"
+                              : "text-text-primary"
+                          }`}
+                        >
+                          {todo}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
         </motion.div>
-
-        {/* ── Extracted Todos ── */}
-        {result.extractedTodos.length > 0 && (
-          <div>
-            <div className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-text-muted uppercase tracking-wider">
-              <ListTodo className="h-3.5 w-3.5" />
-              相手からのToDo
-            </div>
-            <ul className="space-y-1">
-              {result.extractedTodos.map((todo, i) => (
-                <li key={i} className="flex items-start gap-2 text-sm text-text-primary">
-                  <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-blue" />
-                  {todo}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
 
         {/* ── Action Suggestions ── */}
         <div>
@@ -376,6 +494,8 @@ function Step2View({
   onSaveDraft,
   isSendingMail,
   onBack,
+  signature,
+  onSaveSignature,
 }: {
   emailContext: { sender: string; senderEmail: string };
   subject: string;
@@ -387,7 +507,26 @@ function Step2View({
   onSaveDraft: () => void;
   isSendingMail?: boolean;
   onBack: () => void;
+  signature: string;
+  onSaveSignature: (s: string) => void;
 }) {
+  const [showSigPopover, setShowSigPopover] = useState(false);
+
+  // When signature changes, append/update it in the draft
+  const applySignature = (newSig: string) => {
+    // Find existing signature block by looking for stored signature at the end
+    const trimmedOld = signature.trim();
+    let base = draft;
+    if (trimmedOld && draft.trimEnd().endsWith(trimmedOld)) {
+      base = draft.substring(0, draft.trimEnd().lastIndexOf(trimmedOld)).replace(/\n+$/, "");
+    }
+    const updated = newSig.trim()
+      ? `${base}\n\n${newSig.trim()}`
+      : base;
+    onEditDraft(updated);
+    onSaveSignature(newSig);
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -410,13 +549,31 @@ function Step2View({
 
       {/* Footer with send/draft/confirm */}
       <div className="flex items-center justify-between border-t border-border-default px-4 py-2.5">
-        <button
-          onClick={onBack}
-          className="flex items-center gap-1 text-xs text-text-muted hover:text-text-primary transition-colors"
-        >
-          <ArrowLeft className="h-3.5 w-3.5" />
-          戻る
-        </button>
+        <div className="relative flex items-center gap-2">
+          <button
+            onClick={onBack}
+            className="flex items-center gap-1 text-xs text-text-muted hover:text-text-primary transition-colors"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            戻る
+          </button>
+          <button
+            onClick={() => setShowSigPopover((v) => !v)}
+            title="署名を編集"
+            className="flex items-center justify-center text-text-muted/50 hover:text-text-muted hover:opacity-100 transition-all"
+          >
+            <Settings2 className="h-3.5 w-3.5" />
+          </button>
+          <AnimatePresence>
+            {showSigPopover && (
+              <SignaturePopover
+                signature={signature}
+                onSave={applySignature}
+                onClose={() => setShowSigPopover(false)}
+              />
+            )}
+          </AnimatePresence>
+        </div>
         <div className="flex items-center gap-2">
           <span className="text-xs text-text-muted">Step 2 / 3</span>
           <button
@@ -466,6 +623,8 @@ function Step3ComposeView({
   onSaveDraft,
   isSendingMail,
   onBack,
+  signature,
+  onSaveSignature,
 }: {
   emailContext: { sender: string; senderEmail: string };
   subject: string;
@@ -476,7 +635,24 @@ function Step3ComposeView({
   onSaveDraft: () => void;
   isSendingMail?: boolean;
   onBack: () => void;
+  signature: string;
+  onSaveSignature: (s: string) => void;
 }) {
+  const [showSigPopover, setShowSigPopover] = useState(false);
+
+  const applySignature = (newSig: string) => {
+    const trimmedOld = signature.trim();
+    let base = draft;
+    if (trimmedOld && draft.trimEnd().endsWith(trimmedOld)) {
+      base = draft.substring(0, draft.trimEnd().lastIndexOf(trimmedOld)).replace(/\n+$/, "");
+    }
+    const updated = newSig.trim()
+      ? `${base}\n\n${newSig.trim()}`
+      : base;
+    onEditDraft(updated);
+    onSaveSignature(newSig);
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -496,13 +672,31 @@ function Step3ComposeView({
 
       {/* Footer */}
       <div className="flex items-center justify-between border-t border-border-default px-4 py-2.5">
-        <button
-          onClick={onBack}
-          className="flex items-center gap-1 text-xs text-text-muted hover:text-text-primary transition-colors"
-        >
-          <ArrowLeft className="h-3.5 w-3.5" />
-          戻る
-        </button>
+        <div className="relative flex items-center gap-2">
+          <button
+            onClick={onBack}
+            className="flex items-center gap-1 text-xs text-text-muted hover:text-text-primary transition-colors"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            戻る
+          </button>
+          <button
+            onClick={() => setShowSigPopover((v) => !v)}
+            title="署名を編集"
+            className="flex items-center justify-center text-text-muted/50 hover:text-text-muted hover:opacity-100 transition-all"
+          >
+            <Settings2 className="h-3.5 w-3.5" />
+          </button>
+          <AnimatePresence>
+            {showSigPopover && (
+              <SignaturePopover
+                signature={signature}
+                onSave={applySignature}
+                onClose={() => setShowSigPopover(false)}
+              />
+            )}
+          </AnimatePresence>
+        </div>
         <div className="flex items-center gap-2">
           <span className="text-xs text-text-muted">Step 3 / 3</span>
           <button
@@ -728,6 +922,7 @@ export function AiPanel({
   onReset,
   onBack,
 }: AiPanelProps) {
+  const [signature, saveSignature] = useSignature();
   const emailCtx = aiState.emailContext
     ? { sender: aiState.emailContext.sender, senderEmail: aiState.emailContext.senderEmail }
     : { sender: "", senderEmail: "" };
@@ -791,6 +986,8 @@ export function AiPanel({
           onSaveDraft={onSaveDraft}
           isSendingMail={isSendingMail}
           onBack={onBack}
+          signature={signature}
+          onSaveSignature={saveSignature}
         />
       )}
 
@@ -807,6 +1004,8 @@ export function AiPanel({
           onSaveDraft={onSaveDraft}
           isSendingMail={isSendingMail}
           onBack={onBack}
+          signature={signature}
+          onSaveSignature={saveSignature}
         />
       )}
     </AnimatePresence>

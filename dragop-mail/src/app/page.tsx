@@ -836,11 +836,16 @@ export default function Home() {
         step1Result: aiState.step1Result!,
       });
       if (data.step2) {
+        // Auto-append saved signature if available
+        const savedSig = localStorage.getItem("dragop-mail-signature") || "";
+        const draftWithSig = savedSig.trim()
+          ? `${data.step2!.draftReply}\n\n${savedSig.trim()}`
+          : data.step2!.draftReply;
         setAiState((prev) => ({
           ...prev,
           step: "step2",
           step2Result: data.step2!,
-          editedDraft: data.step2!.draftReply,
+          editedDraft: draftWithSig,
           editedSubject: data.step2!.replySubject,
         }));
       }
@@ -1023,10 +1028,12 @@ export default function Home() {
   // Toggle state for unified side panel (元メール / 最終チェック)
   const [sideCardView, setSideCardView] = useState<"original" | "finalCheck">("original");
 
-  // Auto-switch to finalCheck when step3 is reached
+  // Auto-switch side card view based on step
   useEffect(() => {
     if (aiState.step === "step3" || aiState.step === "step3-loading") {
       setSideCardView("finalCheck");
+    } else if (aiState.step === "step1" || aiState.step === "step2" || aiState.step === "step2-loading") {
+      setSideCardView("original");
     }
   }, [aiState.step]);
 
