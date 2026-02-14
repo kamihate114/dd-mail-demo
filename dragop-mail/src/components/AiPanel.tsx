@@ -167,16 +167,26 @@ function ComposeHeader({
    ================================================================ */
 
 const SIGNATURE_KEY = "dragop-mail-signature";
+const SIGNATURE_MAX_LENGTH = 1000;
 
 function useSignature() {
   const [signature, setSignature] = useState(() => {
     if (typeof window === "undefined") return "";
-    return localStorage.getItem(SIGNATURE_KEY) || "";
+    try {
+      return localStorage.getItem(SIGNATURE_KEY) || "";
+    } catch {
+      return "";
+    }
   });
 
   const save = (val: string) => {
-    setSignature(val);
-    localStorage.setItem(SIGNATURE_KEY, val);
+    const clamped = val.slice(0, SIGNATURE_MAX_LENGTH);
+    setSignature(clamped);
+    try {
+      localStorage.setItem(SIGNATURE_KEY, clamped);
+    } catch (err) {
+      console.warn("[Dragop] 署名の保存に失敗しました:", err);
+    }
   };
 
   return [signature, save] as const;
@@ -192,6 +202,7 @@ function SignaturePopover({
   onClose: () => void;
 }) {
   const [draft, setDraft] = useState(signature);
+  const isOverLimit = draft.length > SIGNATURE_MAX_LENGTH;
 
   return (
     <motion.div
@@ -210,12 +221,23 @@ function SignaturePopover({
       <div className="p-3">
         <textarea
           value={draft}
-          onChange={(e) => setDraft(e.target.value)}
+          onChange={(e) => {
+            const v = e.target.value;
+            if (v.length <= SIGNATURE_MAX_LENGTH) setDraft(v);
+          }}
+          maxLength={SIGNATURE_MAX_LENGTH}
           rows={5}
           placeholder={"例:\n--\n山田 太郎\n株式会社サンプル\ntel: 03-xxxx-xxxx"}
-          className="w-full resize-none rounded-lg border border-border-default bg-surface-raised dark:bg-white/[0.04] px-3 py-2 text-xs leading-relaxed text-text-primary
-                     placeholder:text-text-muted/60 focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue/30 transition-colors"
+          className={`w-full resize-none rounded-lg border bg-surface-raised dark:bg-white/[0.04] px-3 py-2 text-xs leading-relaxed text-text-primary
+                     placeholder:text-text-muted/60 focus:outline-none focus:ring-1 transition-colors ${
+                       isOverLimit
+                         ? "border-red-400 focus:border-red-400 focus:ring-red-400/30"
+                         : "border-border-default focus:border-brand-blue focus:ring-brand-blue/30"
+                     }`}
         />
+        {isOverLimit && (
+          <p className="mt-1 text-[10px] text-red-500">署名は{SIGNATURE_MAX_LENGTH}文字以内にしてください</p>
+        )}
         <div className="mt-2 flex justify-end gap-2">
           <button
             onClick={onClose}
@@ -228,7 +250,9 @@ function SignaturePopover({
               onSave(draft);
               onClose();
             }}
-            className="rounded-md bg-brand-blue/10 px-2.5 py-1 text-[11px] font-medium text-brand-blue hover:bg-brand-blue/20 transition-colors"
+            disabled={isOverLimit}
+            className="rounded-md bg-brand-blue/10 px-2.5 py-1 text-[11px] font-medium text-brand-blue hover:bg-brand-blue/20 transition-colors
+                       disabled:opacity-40 disabled:cursor-not-allowed"
           >
             保存
           </button>
