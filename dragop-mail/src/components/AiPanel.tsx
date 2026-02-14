@@ -468,6 +468,28 @@ export function Step3Sidebar({
 }) {
   const [addedTodos, setAddedTodos] = useState<Set<number>>(new Set());
   const [addedEvents, setAddedEvents] = useState<Set<number>>(new Set());
+  const [currentMessageIndex, setCurrentMessageIndex] = useState(0);
+
+  const loadingMessages = [
+    "プロの校正者の視点で、誤字脱字を徹底スキャンしています...",
+    "二重敬語や不自然な日本語がないか、最終精査中です...",
+    "ビジネス文書として、相手に失礼のない品格があるか確認しています...",
+    "返信内容から、あなたがやるべきタスクを洗い出しています...",
+    "期限が設定された依頼事項を、ToDoリスト化しています...",
+    "文中の日付や時間を検知し、カレンダー登録の準備をしています...",
+    "あなたの信頼を守るため、細部まで磨きをかけています...",
+    "まもなく最終チェック結果をお届けします...",
+  ];
+
+  useEffect(() => {
+    if (!isLoading) return;
+
+    const interval = setInterval(() => {
+      setCurrentMessageIndex((prev) => (prev + 1) % loadingMessages.length);
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [isLoading, loadingMessages.length]);
 
   const handleAddTodo = (c: { text: string; notes?: string }, i: number) => {
     onAddTodo(c);
@@ -498,7 +520,18 @@ export function Step3Sidebar({
           <Loader2 className="h-6 w-6 animate-spin text-brand-blue" />
           <Sparkles className="absolute -right-1 -top-1 h-3 w-3 text-brand-blue/60" />
         </div>
-        <p className="text-xs text-text-secondary">最終チェック中...</p>
+        <AnimatePresence mode="wait">
+          <motion.p
+            key={currentMessageIndex}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.3 }}
+            className="text-xs text-text-secondary text-center px-2"
+          >
+            {loadingMessages[currentMessageIndex]}
+          </motion.p>
+        </AnimatePresence>
       </div>
     );
   }
@@ -652,7 +685,19 @@ export function AiPanel({
       )}
 
       {aiState.step === "step2-loading" && (
-        <LoadingView key="loading2" message="返信案を生成中..." />
+        <LoadingView
+          key="loading2"
+          messages={[
+            "選択された返信方針に基づき、構成を組み立てています...",
+            "ご希望のニュアンスに合わせた最適な表現を検討中です...",
+            "あなたの意図を、プロフェッショナルな文章へ変換しています...",
+            "信頼関係を深める、誠実な言い回しを考案中です...",
+            "一文を短く、読みやすいリズムに整えています...",
+            "誤字脱字や、不自然な表現がないか最終精査しています...",
+            "あなたの『右腕』として、完璧な下書きに仕上げています...",
+            "まもなく、返信案をご提示します...",
+          ]}
+        />
       )}
 
       {aiState.step === "step2" && (
