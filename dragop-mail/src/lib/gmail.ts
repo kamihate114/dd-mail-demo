@@ -155,7 +155,7 @@ const SYSTEM_LABEL_NAMES: Record<string, string> = {
 };
 
 // Labels to show in sidebar (in order)
-const VISIBLE_SYSTEM_LABELS = ["INBOX", "SENT", "DRAFT", "STARRED", "IMPORTANT", "TRASH"];
+const VISIBLE_SYSTEM_LABELS = ["INBOX", "SENT", "DRAFT", "STARRED", "IMPORTANT", "SPAM", "TRASH"];
 
 /**
  * Fetch Gmail labels

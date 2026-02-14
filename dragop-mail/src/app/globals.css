@@ -151,6 +151,77 @@
   pointer-events: none;
 }
 
+/* ── AI Breathing Glow (Loading States) ── */
+
+.ai-breathing {
+  position: relative;
+}
+
+.ai-breathing::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.5px;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  -webkit-mask-composite: xor;
+  pointer-events: none;
+  z-index: 10;
+}
+
+/* Shared: border opacity breathing */
+@keyframes breathing-border {
+  0%, 100% { opacity: 0.2; }
+  50%      { opacity: 0.75; }
+}
+
+/* Step 1 — Indigo → Blue: Deep Analysis (4s) */
+@keyframes breathing-glow-1 {
+  0%, 100% { box-shadow: 0 0 8px 1px rgba(99, 102, 241, 0.03); }
+  50%      { box-shadow: 0 0 20px 5px rgba(99, 102, 241, 0.10); }
+}
+
+.ai-breathing-step1::before {
+  background: linear-gradient(135deg, #6366f1, #818cf8, #3b82f6);
+  animation: breathing-border 4s ease-in-out infinite;
+}
+
+.ai-breathing-step1 {
+  animation: breathing-glow-1 4s ease-in-out infinite;
+}
+
+/* Step 2 — Violet → Indigo: Creative Drafting (3.5s) */
+@keyframes breathing-glow-2 {
+  0%, 100% { box-shadow: 0 0 8px 1px rgba(139, 92, 246, 0.03); }
+  50%      { box-shadow: 0 0 20px 5px rgba(139, 92, 246, 0.10); }
+}
+
+.ai-breathing-step2::before {
+  background: linear-gradient(135deg, #8b5cf6, #a78bfa, #6366f1);
+  animation: breathing-border 3.5s ease-in-out infinite;
+}
+
+.ai-breathing-step2 {
+  animation: breathing-glow-2 3.5s ease-in-out infinite;
+}
+
+/* Step 3 — Blue → Violet: Final Polish (3s) */
+@keyframes breathing-glow-3 {
+  0%, 100% { box-shadow: 0 0 8px 1px rgba(79, 70, 229, 0.03); }
+  50%      { box-shadow: 0 0 20px 5px rgba(79, 70, 229, 0.10); }
+}
+
+.ai-breathing-step3::before {
+  background: linear-gradient(135deg, #3b82f6, #818cf8, #8b5cf6);
+  animation: breathing-border 3s ease-in-out infinite;
+}
+
+.ai-breathing-step3 {
+  animation: breathing-glow-3 3s ease-in-out infinite;
+}
+
 /* ── Glassmorphism ── */
 .glass {
   background: var(--glass-bg);

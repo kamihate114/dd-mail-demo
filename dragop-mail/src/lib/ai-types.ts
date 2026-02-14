@@ -8,14 +8,21 @@ export interface AiEmailContext {
   conversationId?: string;   // Outlook conversationId for reply threading
 }
 
+export interface AiTag {
+  label: string;
+  category: "action" | "sentiment" | "topic";
+}
+
 export interface AiStep1Result {
   headline: string;           // AI-generated one-line catchphrase (e.g. "新規採用フローへの招待")
-  status: "要返信" | "確認のみ" | "対応不要" | "緊急";
+  status: "要返信" | "確認のみ" | "対応不要" | "緊急";  // legacy — derived from tags
+  tags: AiTag[];              // max 3 tags (action, sentiment, topic)
   summary: string;
   structuredSummary: {
-    situation: string;        // 状況
+    situation: string | string[];  // 状況（箇条書き配列 or レガシー文字列）
+    aiInsight?: { label: string; text: string }[];  // AIの分析（動的3項目）
     expectedAction: string;   // 期待されるアクション
-    estimatedTime?: string;   // 所要時間（任意）
+    estimatedTime?: string;   // 推定所要時間（任意）
   };
   extractedTodos: string[];
   suggestedActions: {

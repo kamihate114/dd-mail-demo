@@ -7,6 +7,7 @@ import {
   AiStep1Result,
   AiStep2Result,
   AiStep3Result,
+  AiTag,
 } from "@/lib/ai-types";
 import {
   SYSTEM_PROMPT,
@@ -86,7 +87,15 @@ async function callGPT(messages: Msg[], _effort: string, maxTokens: number): Pro
     max_completion_tokens: maxTokens,
   } as OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming) as ChatCompletion;
 
-  return completion.choices[0]?.message?.content || "{}";
+  const choice = completion.choices[0];
+  const finishReason = choice?.finish_reason;
+  const content = choice?.message?.content || "{}";
+
+  if (finishReason !== "stop") {
+    console.warn(`[AI Route] finish_reason=${finishReason}, content length=${content.length}`);
+  }
+
+  return content;
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse<AiApiResponse>> {
@@ -115,16 +124,50 @@ export async function POST(request: NextRequest): Promise<NextResponse<AiApiResp
     const messages = buildMessages(body);
 
     if (step === 1) {
-      const raw = await callGPT(messages, "low", 2000);
+      const raw = await callGPT(messages, "low", 3500);
+      console.log(`[AI Route] step=1 raw response length:`, raw.length);
+      console.log(`[AI Route] step=1 raw:`, raw.substring(0, 500));
       const parsed = JSON.parse(stripCodeFence(raw)) as AiStep1Result;
 
       // Ensure new fields exist with defaults
       parsed.headline = parsed.headline || "メール分析";
-      parsed.status = parsed.status || "確認のみ";
       parsed.structuredSummary = parsed.structuredSummary || {
         situation: parsed.summary || "",
         expectedAction: "内容をご確認ください。",
       };
+
+      // ── Tags: normalize and ensure constraints ──
+      const validCategories = new Set(["action", "sentiment", "topic"]);
+      if (Array.isArray(parsed.tags) && parsed.tags.length > 0) {
+        // Filter valid tags, deduplicate by category, limit to 3
+        const deduped: AiTag[] = [];
+        const seenCats = new Set<string>();
+        for (const t of parsed.tags) {
+          if (t.label && validCategories.has(t.category) && !seenCats.has(t.category)) {
+            seenCats.add(t.category);
+            deduped.push(t);
+          }
+          if (deduped.length >= 3) break;
+        }
+        parsed.tags = deduped;
+      } else {
+        parsed.tags = [];
+      }
+
+      // Ensure at least one action tag exists
+      const hasAction = parsed.tags.some((t: AiTag) => t.category === "action");
+      if (!hasAction) {
+        const fallbackLabel = parsed.status || "確認のみ";
+        parsed.tags.unshift({ label: fallbackLabel, category: "action" });
+        if (parsed.tags.length > 3) parsed.tags = parsed.tags.slice(0, 3);
+      }
+
+      // Derive legacy `status` from first action tag
+      const actionTag = parsed.tags.find((t: AiTag) => t.category === "action");
+      parsed.status = (actionTag?.label as AiStep1Result["status"]) || "確認のみ";
+
+      console.log(`[AI Route] step=1 tags:`, JSON.stringify(parsed.tags));
+      console.log(`[AI Route] step=1 headline:`, parsed.headline, `suggestedActions:`, parsed.suggestedActions?.length);
 
       // Ensure arrays exist
       parsed.extractedTodos = parsed.extractedTodos || [];

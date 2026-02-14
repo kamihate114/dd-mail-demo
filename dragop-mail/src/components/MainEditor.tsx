@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { useDropzone } from "react-dropzone";
 import { motion, AnimatePresence } from "framer-motion";
 import { Mail, Upload, HelpCircle, Sparkles } from "lucide-react";
 import { AiWorkflowState, AiEmailContext } from "@/lib/ai-types";
 import { AiPanel } from "@/components/AiPanel";
+import { getGreeting } from "@/lib/greetings";
 
 interface DropDetail {
   types: string[];
@@ -69,6 +70,10 @@ export function MainEditor({
 
   const hasContent = mailContent.trim().length > 0;
   const aiActive = aiState.step !== "idle";
+
+  // 挨拶メッセージ：マウント時に1回だけランダム選択（リロードで変わる）
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const greeting = useMemo(() => getGreeting(), []);
 
   const triggerSparkle = useCallback(() => {
     setShowSparkle(true);
@@ -232,6 +237,13 @@ export function MainEditor({
   const isOver = isDragActive || externalDragOver;
   const rootProps = getRootProps();
 
+  // Breathing border class for AI loading states
+  const breathingClass =
+    aiState.step === "step1-loading" ? "ai-breathing ai-breathing-step1"
+    : aiState.step === "step2-loading" ? "ai-breathing ai-breathing-step2"
+    : "";
+  const isAiLoading = !!breathingClass;
+
   const stepIndex = (() => {
     if (aiState.step === "idle") return 0;
     if (aiState.step === "step1-loading" || aiState.step === "step1") return 1;
@@ -245,7 +257,7 @@ export function MainEditor({
       {/* Greeting */}
       <div className="mb-4 text-center">
         <h2 className="text-lg font-semibold text-text-primary">
-          おかえりなさい！今日もお疲れ様でした。
+          {greeting}
         </h2>
       </div>
 
@@ -256,9 +268,12 @@ export function MainEditor({
         className={`
           relative flex flex-1 flex-col rounded-2xl border transition-all duration-300
           ${showSparkle ? "animate-sparkle" : ""}
-          ${isOver
-            ? "border-brand-blue shadow-lg shadow-brand-blue/20 dark:shadow-brand-blue/10"
-            : "border-border-default"
+          ${breathingClass}
+          ${isAiLoading
+            ? "border-transparent"
+            : isOver
+              ? "border-brand-blue shadow-lg shadow-brand-blue/20 dark:shadow-brand-blue/10"
+              : "border-border-default"
           }
           bg-surface-raised/80 dark:bg-surface-raised
         `}

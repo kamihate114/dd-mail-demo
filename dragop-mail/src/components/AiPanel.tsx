@@ -21,6 +21,7 @@ import {
   Zap,
   Clock,
   Info,
+  Lightbulb,
   Square,
   CheckSquare,
   Settings2,
@@ -30,6 +31,7 @@ import {
   AiWorkflowState,
   AiStep1Result,
   AiStep3Result,
+  AiTag,
 } from "@/lib/ai-types";
 
 /* ================================================================
@@ -266,22 +268,64 @@ function SignaturePopover({
    Step 1: AI Analysis (no original mail — that's shown externally)
    ================================================================ */
 
-/* ── Status badge helper ── */
-const STATUS_STYLES: Record<string, { bg: string; text: string; icon: typeof Zap }> = {
-  "緊急":   { bg: "bg-red-500/15 dark:bg-red-500/20", text: "text-red-600 dark:text-red-400", icon: Zap },
-  "要返信": { bg: "bg-amber-500/15 dark:bg-amber-500/20", text: "text-amber-600 dark:text-amber-400", icon: Send },
-  "確認のみ": { bg: "bg-sky-500/15 dark:bg-sky-500/20", text: "text-sky-600 dark:text-sky-400", icon: Info },
+/* ── Tag badge helpers ── */
+
+const ACTION_STYLES: Record<string, { bg: string; text: string; icon: typeof Zap }> = {
+  "緊急":     { bg: "bg-red-500/15 dark:bg-red-500/20",     text: "text-red-600 dark:text-red-400",     icon: Zap },
+  "至急":     { bg: "bg-red-500/15 dark:bg-red-500/20",     text: "text-red-600 dark:text-red-400",     icon: Zap },
+  "要返信":   { bg: "bg-amber-500/15 dark:bg-amber-500/20", text: "text-amber-600 dark:text-amber-400", icon: Send },
+  "確認のみ": { bg: "bg-sky-500/15 dark:bg-sky-500/20",     text: "text-sky-600 dark:text-sky-400",     icon: Info },
   "対応不要": { bg: "bg-emerald-500/15 dark:bg-emerald-500/20", text: "text-emerald-600 dark:text-emerald-400", icon: CheckCircle2 },
 };
 
-function StatusBadge({ status }: { status: string }) {
-  const style = STATUS_STYLES[status] || STATUS_STYLES["確認のみ"];
-  const Icon = style.icon;
+const ACTION_DEFAULT = { bg: "bg-sky-500/15 dark:bg-sky-500/20", text: "text-sky-600 dark:text-sky-400", icon: Info };
+
+function TagBadge({ tag }: { tag: AiTag }) {
+  if (tag.category === "action") {
+    const style = ACTION_STYLES[tag.label] || ACTION_DEFAULT;
+    const Icon = style.icon;
+    return (
+      <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${style.bg} ${style.text}`}>
+        <Icon className="h-3 w-3" />
+        {tag.label}
+      </span>
+    );
+  }
+
+  if (tag.category === "sentiment") {
+    return (
+      <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium
+                       bg-purple-500/10 text-purple-600 dark:bg-purple-500/15 dark:text-purple-400">
+        {tag.label}
+      </span>
+    );
+  }
+
+  // topic
   return (
-    <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${style.bg} ${style.text}`}>
-      <Icon className="h-3 w-3" />
-      {status}
+    <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium
+                     bg-slate-500/10 text-slate-600 dark:bg-slate-400/15 dark:text-slate-400">
+      {tag.label}
     </span>
+  );
+}
+
+function TagBadges({ tags, status }: { tags?: AiTag[]; status?: string }) {
+  // Backward compat: if tags not present, fall back to single status badge
+  const resolvedTags: AiTag[] = (tags && tags.length > 0)
+    ? tags
+    : [{ label: status || "確認のみ", category: "action" as const }];
+
+  // Sort: action first, then sentiment, then topic
+  const order = { action: 0, sentiment: 1, topic: 2 };
+  const sorted = [...resolvedTags].sort((a, b) => (order[a.category] ?? 9) - (order[b.category] ?? 9));
+
+  return (
+    <div className="flex flex-wrap items-center gap-1 shrink-0">
+      {sorted.map((tag, i) => (
+        <TagBadge key={`${tag.category}-${i}`} tag={tag} />
+      ))}
+    </div>
   );
 }
 
@@ -334,7 +378,7 @@ function Step1View({
                 {result.headline || "メール分析"}
               </h2>
             </div>
-            <StatusBadge status={result.status || "確認のみ"} />
+            <TagBadges tags={result.tags} status={result.status} />
           </div>
 
           {/* ─ Block 1: 状況 (Situation) ─ */}
@@ -342,22 +386,63 @@ function Step1View({
             <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-indigo-500/10 dark:bg-indigo-500/15">
               <Info className="h-3 w-3 text-indigo-500 dark:text-indigo-400" />
             </div>
-            <div className="min-w-0">
-              <div className="text-[10px] font-semibold uppercase tracking-widest text-text-muted/70 mb-0.5">状況</div>
-              <p className="text-sm leading-relaxed text-text-secondary">
-                {result.structuredSummary?.situation || result.summary}
-              </p>
+            <div className="min-w-0 flex-1">
+              <div className="text-[10px] font-semibold uppercase tracking-widest text-text-muted/70 mb-1">状況</div>
+              {(() => {
+                const sit = result.structuredSummary?.situation;
+                if (Array.isArray(sit) && sit.length > 0) {
+                  return (
+                    <ul className="space-y-1">
+                      {sit.map((item, i) => (
+                        <li key={i} className="flex items-start gap-2">
+                          <span className="mt-1.5 inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-indigo-500/50" />
+                          <span className="text-sm leading-snug text-text-secondary">{item}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  );
+                }
+                return (
+                  <p className="text-sm leading-relaxed text-text-secondary">
+                    {(typeof sit === "string" && sit) || result.summary}
+                  </p>
+                );
+              })()}
             </div>
           </div>
 
-          {/* ─ Block 2: 所要時間 (Time) ─ */}
+          {/* ─ Block 1.5: AIの分析 (AI Insight — 動的3項目) ─ */}
+          {Array.isArray(result.structuredSummary?.aiInsight) && result.structuredSummary.aiInsight.length > 0 && (
+            <div className="flex items-start gap-2.5 border-t border-border-default/40 py-3">
+              <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-amber-500/10 dark:bg-amber-500/15">
+                <Lightbulb className="h-3 w-3 text-amber-500 dark:text-amber-400" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="text-[10px] font-semibold uppercase tracking-widest text-text-muted/70 mb-1.5">AIの分析</div>
+                <ul className="space-y-1.5">
+                  {result.structuredSummary.aiInsight.map((item, i) => (
+                    <li key={i} className="flex items-start gap-2">
+                      <span className="mt-1.5 inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500/60" />
+                      <p className="text-sm leading-snug text-text-secondary">
+                        <span className="font-semibold text-amber-600 dark:text-amber-400">{item.label}</span>
+                        <span className="mx-1 text-text-muted/40">—</span>
+                        {item.text}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
+
+          {/* ─ Block 2: 推定所要時間 (Time) ─ */}
           {result.structuredSummary?.estimatedTime && (
             <div className="flex items-start gap-2.5 border-t border-border-default/40 py-3">
               <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-fuchsia-500/10 dark:bg-fuchsia-500/15">
                 <Clock className="h-3 w-3 text-fuchsia-500 dark:text-fuchsia-400" />
               </div>
               <div className="min-w-0">
-                <div className="text-[10px] font-semibold uppercase tracking-widest text-text-muted/70 mb-0.5">所要時間</div>
+                <div className="text-[10px] font-semibold uppercase tracking-widest text-text-muted/70 mb-0.5">推定所要時間</div>
                 <p className="text-sm leading-relaxed text-text-secondary">
                   {result.structuredSummary.estimatedTime}
                 </p>
@@ -811,7 +896,7 @@ export function Step3Sidebar({
 
   if (isLoading) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-3 p-4">
+      <div className="flex h-full flex-col items-center justify-center gap-3 p-4 rounded-xl ai-breathing ai-breathing-step3">
         <div className="relative">
           <Loader2 className="h-6 w-6 animate-spin text-brand-blue" />
           <Sparkles className="absolute -right-1 -top-1 h-3 w-3 text-brand-blue/60" />
