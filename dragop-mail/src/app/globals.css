@@ -115,6 +115,42 @@
   animation: check-pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
+/* ── AI Summary Card gradient border ── */
+@keyframes ai-border-glow {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.ai-summary-card {
+  position: relative;
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.ai-summary-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 16px;
+  padding: 1.5px;
+  background: linear-gradient(
+    135deg,
+    rgba(99, 102, 241, 0.5),
+    rgba(139, 92, 246, 0.5),
+    rgba(99, 102, 241, 0.3),
+    rgba(168, 85, 247, 0.5),
+    rgba(99, 102, 241, 0.5)
+  );
+  background-size: 300% 300%;
+  animation: ai-border-glow 6s ease infinite;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  -webkit-mask-composite: xor;
+  pointer-events: none;
+}
+
 /* ── Glassmorphism ── */
 .glass {
   background: var(--glass-bg);

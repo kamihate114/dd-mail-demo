@@ -118,6 +118,14 @@ export async function POST(request: NextRequest): Promise<NextResponse<AiApiResp
       const raw = await callGPT(messages, "low", 2000);
       const parsed = JSON.parse(stripCodeFence(raw)) as AiStep1Result;
 
+      // Ensure new fields exist with defaults
+      parsed.headline = parsed.headline || "メール分析";
+      parsed.status = parsed.status || "確認のみ";
+      parsed.structuredSummary = parsed.structuredSummary || {
+        situation: parsed.summary || "",
+        expectedAction: "内容をご確認ください。",
+      };
+
       // Ensure arrays exist
       parsed.extractedTodos = parsed.extractedTodos || [];
 

@@ -9,7 +9,14 @@ export interface AiEmailContext {
 }
 
 export interface AiStep1Result {
+  headline: string;           // AI-generated one-line catchphrase (e.g. "新規採用フローへの招待")
+  status: "要返信" | "確認のみ" | "対応不要" | "緊急";
   summary: string;
+  structuredSummary: {
+    situation: string;        // 状況
+    expectedAction: string;   // 期待されるアクション
+    estimatedTime?: string;   // 所要時間（任意）
+  };
   extractedTodos: string[];
   suggestedActions: {
     label: string;

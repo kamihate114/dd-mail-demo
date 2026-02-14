@@ -18,6 +18,10 @@ import {
   User,
   AtSign,
   CalendarPlus,
+  Zap,
+  Clock,
+  Target,
+  Info,
 } from "lucide-react";
 import {
   AiWorkflowState,
@@ -159,6 +163,25 @@ function ComposeHeader({
    Step 1: AI Analysis (no original mail — that's shown externally)
    ================================================================ */
 
+/* ── Status badge helper ── */
+const STATUS_STYLES: Record<string, { bg: string; text: string; icon: typeof Zap }> = {
+  "緊急":   { bg: "bg-red-500/15 dark:bg-red-500/20", text: "text-red-600 dark:text-red-400", icon: Zap },
+  "要返信": { bg: "bg-amber-500/15 dark:bg-amber-500/20", text: "text-amber-600 dark:text-amber-400", icon: Send },
+  "確認のみ": { bg: "bg-sky-500/15 dark:bg-sky-500/20", text: "text-sky-600 dark:text-sky-400", icon: Info },
+  "対応不要": { bg: "bg-emerald-500/15 dark:bg-emerald-500/20", text: "text-emerald-600 dark:text-emerald-400", icon: CheckCircle2 },
+};
+
+function StatusBadge({ status }: { status: string }) {
+  const style = STATUS_STYLES[status] || STATUS_STYLES["確認のみ"];
+  const Icon = style.icon;
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${style.bg} ${style.text}`}>
+      <Icon className="h-3 w-3" />
+      {status}
+    </span>
+  );
+}
+
 function Step1View({
   result,
   onSelectAction,
@@ -179,16 +202,71 @@ function Step1View({
       className="flex flex-1 flex-col overflow-hidden"
     >
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {/* Summary */}
-        <div>
-          <div className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-text-muted uppercase tracking-wider">
-            <Sparkles className="h-3.5 w-3.5" />
-            要約
-          </div>
-          <p className="text-sm leading-relaxed text-text-primary">{result.summary}</p>
-        </div>
 
-        {/* Extracted Todos */}
+        {/* ── AI Summary Card ── */}
+        <motion.div
+          initial={{ opacity: 0, scale: 0.97 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.4, ease: "easeOut" }}
+          className="ai-summary-card bg-surface-raised dark:bg-white/[0.03] p-4 space-y-3"
+        >
+          {/* Card header: headline + status badge */}
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <Sparkles className="h-4 w-4 shrink-0 text-indigo-500 dark:text-indigo-400" />
+              <h2 className="text-lg font-bold text-text-primary truncate leading-tight">
+                {result.headline || "メール分析"}
+              </h2>
+            </div>
+            <StatusBadge status={result.status || "確認のみ"} />
+          </div>
+
+          {/* Structured summary: situation / expected action / time */}
+          <div className="space-y-2">
+            {/* 状況 */}
+            <div className="flex items-start gap-2.5">
+              <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-indigo-500/10 dark:bg-indigo-500/15">
+                <Info className="h-3 w-3 text-indigo-500 dark:text-indigo-400" />
+              </div>
+              <div className="min-w-0">
+                <div className="text-[10px] font-semibold uppercase tracking-widest text-text-muted/70 mb-0.5">状況</div>
+                <p className="text-sm leading-relaxed text-text-secondary">
+                  {result.structuredSummary?.situation || result.summary}
+                </p>
+              </div>
+            </div>
+
+            {/* 期待されるアクション */}
+            <div className="flex items-start gap-2.5">
+              <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-violet-500/10 dark:bg-violet-500/15">
+                <Target className="h-3 w-3 text-violet-500 dark:text-violet-400" />
+              </div>
+              <div className="min-w-0">
+                <div className="text-[10px] font-semibold uppercase tracking-widest text-text-muted/70 mb-0.5">期待されるアクション</div>
+                <p className="text-sm leading-relaxed text-text-secondary">
+                  {result.structuredSummary?.expectedAction || "内容をご確認ください。"}
+                </p>
+              </div>
+            </div>
+
+            {/* 所要時間（あれば） */}
+            {result.structuredSummary?.estimatedTime && (
+              <div className="flex items-start gap-2.5">
+                <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-fuchsia-500/10 dark:bg-fuchsia-500/15">
+                  <Clock className="h-3 w-3 text-fuchsia-500 dark:text-fuchsia-400" />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-[10px] font-semibold uppercase tracking-widest text-text-muted/70 mb-0.5">所要時間</div>
+                  <p className="text-sm leading-relaxed text-text-secondary">
+                    {result.structuredSummary.estimatedTime}
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        </motion.div>
+
+        {/* ── Extracted Todos ── */}
         {result.extractedTodos.length > 0 && (
           <div>
             <div className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-text-muted uppercase tracking-wider">
@@ -206,7 +284,7 @@ function Step1View({
           </div>
         )}
 
-        {/* Action Suggestions */}
+        {/* ── Action Suggestions ── */}
         <div>
           <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-text-muted uppercase tracking-wider">
             <Send className="h-3.5 w-3.5" />
@@ -229,7 +307,7 @@ function Step1View({
           </div>
         </div>
 
-        {/* Custom input */}
+        {/* ── Custom input ── */}
         <div>
           <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-text-muted uppercase tracking-wider">
             <MessageSquarePlus className="h-3.5 w-3.5" />
