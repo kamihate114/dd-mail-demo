@@ -18,6 +18,7 @@ import {
   X,
   AlertTriangle,
   CreditCard,
+  Settings,
 } from "lucide-react";
 import {
   fetchDashboardData,
@@ -568,6 +569,39 @@ export default function DashboardPage() {
             </div>
             <p className="mt-1 text-2xl font-bold text-text-primary">{memberCount}</p>
           </div>
+        </div>
+
+        {/* ── 人数・プラン変更（Stripe ポータル予定） ── */}
+        <div className="mb-6 overflow-hidden rounded-xl border border-border-default bg-surface-raised">
+          <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-3">
+              <div className="rounded-lg bg-teal/10 p-1.5">
+                <Settings className="h-4 w-4 text-teal" />
+              </div>
+              <div>
+                <h2 className="text-sm font-semibold text-text-primary">シート数・プランの変更</h2>
+                <p className="text-xs text-text-muted">契約しているシート数やプランを変更する場合はこちらから</p>
+              </div>
+            </div>
+            <a
+              href={process.env.NEXT_PUBLIC_STRIPE_CUSTOMER_PORTAL_URL ?? "#"}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => {
+                if (!process.env.NEXT_PUBLIC_STRIPE_CUSTOMER_PORTAL_URL) {
+                  e.preventDefault();
+                }
+              }}
+              className="shrink-0 rounded-lg bg-indigo-500 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-indigo-600 disabled:opacity-50"
+            >
+              人数・プランを変更する
+            </a>
+          </div>
+          {!process.env.NEXT_PUBLIC_STRIPE_CUSTOMER_PORTAL_URL && (
+            <p className="border-t border-border-default px-5 py-2 text-[10px] text-text-muted">
+              Stripe ポータル設定後、ボタンから遷移できます。
+            </p>
+          )}
         </div>
 
         {/* ── Invite URL Card ── */}
