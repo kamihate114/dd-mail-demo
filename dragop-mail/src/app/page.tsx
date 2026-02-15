@@ -224,6 +224,21 @@ export default function Home() {
         }
       }
 
+      // 1d) 前回 Outlook でログイン済み → MSAL キャッシュからトークンを更新して続行（毎回 Microsoft ログイン不要）
+      if (provider === "outlook" && outlookAuthRef.current && (cachedEmails.length > 0 || token)) {
+        try {
+          const { msalTryGetToken } = await import("@/lib/msal");
+          const freshToken = await msalTryGetToken();
+          if (freshToken) {
+            console.log("[Dragop] Outlook session restored from MSAL cache");
+            await outlookAuthRef.current(freshToken);
+            return;
+          }
+        } catch (err) {
+          console.warn("[Dragop] MSAL silent restore failed, using saved token:", err);
+        }
+      }
+
       // 2) キャッシュから復元（Outlook のみ。Gmail は停止のためスキップ）
       if (provider === "outlook" && (cachedEmails.length > 0 || token)) {
         setMailProvider("outlook");
