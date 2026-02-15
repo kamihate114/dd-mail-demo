@@ -16,6 +16,8 @@
   "dependencies": {
     "@azure/msal-browser": "^5.1.0",
     "@react-oauth/google": "^0.13.4",
+    "@supabase/ssr": "^0.8.0",
+    "@supabase/supabase-js": "^2.95.3",
     "framer-motion": "^12.33.0",
     "lucide-react": "^0.563.0",
     "next": "^16.1.6",
