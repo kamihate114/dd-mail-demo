@@ -79,9 +79,9 @@ export function TodoSidebar({ suggestions, todos, onAddTodo, onToggleTodo }: Tod
             value={newTodo}
             onChange={(e) => setNewTodo(e.target.value)}
             onKeyDown={handleKeyDown}
-            className="flex-1 rounded-lg border border-border-default bg-transparent px-2.5 py-1.5
+            className="flex-1 rounded-lg border border-border-default bg-surface dark:bg-white/5 px-2.5 py-1.5
                        text-xs text-text-primary placeholder:text-text-muted
-                       focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue/30
+                       focus:border-brand-blue focus:bg-brand-blue/5 dark:focus:bg-brand-blue/10 focus:outline-none focus:ring-2 focus:ring-brand-blue/40
                        transition-colors"
           />
           <button

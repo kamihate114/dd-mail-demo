@@ -127,11 +127,11 @@ function LoginButton({ provider, onClick, loading }: { provider: "outlook" | "gm
 function SavedSessionButton({ provider, onRestore, onLogout }: { provider: "outlook" | "gmail"; onRestore: () => void; onLogout: () => void }) {
   const meta = PROVIDER_META[provider];
   return (
-    <div className="flex w-full min-w-0 items-center gap-4">
+    <div className="flex w-full min-w-0 items-center gap-2">
       <button
         onClick={onRestore}
         className="group flex min-w-0 flex-1 basis-0 items-center gap-3 rounded-xl border-2 border-brand-blue/30
-                   bg-brand-blue/5 dark:bg-brand-blue/10 px-4 py-3
+                   bg-brand-blue/5 dark:bg-brand-blue/10 px-4 py-3 w-full
                    hover:border-brand-blue hover:shadow-md hover:shadow-brand-blue/10
                    transition-all duration-200"
       >
@@ -169,7 +169,7 @@ export function MailLoginScreen({ onLogin, onGmailAuth, onOutlookAuth, gmailLoad
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -12 }}
       transition={{ duration: 0.25 }}
-      className="flex h-full w-full min-w-0 flex-col items-center justify-center gap-6 px-3"
+      className="flex h-full w-full min-w-0 flex-col items-center justify-center gap-6 px-2"
     >
       <div className="text-center">
         <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-brand-blue/10 dark:bg-brand-blue/15">

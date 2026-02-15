@@ -25,6 +25,7 @@ function readFileAsText(file: File): Promise<string> {
 
 interface MainEditorProps {
   onMailLoaded: (text: string, source: string) => void;
+  onLoadThread?: (threadId?: string, conversationId?: string) => Promise<string | null>;
   onAppleMailDrop: (subject: string) => void;
   aiState: AiWorkflowState;
   onAiAnalyze: (emailContext: AiEmailContext) => void;
@@ -44,6 +45,7 @@ interface MainEditorProps {
 
 export function MainEditor({
   onMailLoaded,
+  onLoadThread,
   onAppleMailDrop,
   aiState,
   onAiAnalyze,
@@ -138,6 +140,34 @@ export function MainEditor({
       if (emailJson) {
         try {
           const email = JSON.parse(emailJson) as { id?: string; sender: string; senderEmail: string; subject: string; body: string; threadId?: string; conversationId?: string };
+          if (onLoadThread && (email.threadId || email.conversationId)) {
+            try {
+              const threadText = await onLoadThread(email.threadId, email.conversationId);
+              if (threadText) {
+                setContentOrigin("sidebar");
+                loadContent(threadText, email.subject);
+                lastEmailRef.current = {
+                  sender: email.sender,
+                  senderEmail: email.senderEmail,
+                  subject: email.subject,
+                  body: email.body,
+                  emailId: email.id,
+                  threadId: email.threadId,
+                  conversationId: email.conversationId,
+                };
+                onAiAnalyze({
+                  sender: email.sender,
+                  senderEmail: email.senderEmail,
+                  subject: email.subject,
+                  body: email.body,
+                  emailId: email.id,
+                  threadId: email.threadId,
+                  conversationId: email.conversationId,
+                });
+                return;
+              }
+            } catch { /* fall back to single email */ }
+          }
           const formatted = `件名: ${email.subject}\n差出人: ${email.sender} <${email.senderEmail}>\n\n${email.body}`;
           setContentOrigin("sidebar");
           loadContent(formatted, email.subject);
@@ -185,7 +215,7 @@ export function MainEditor({
       document.removeEventListener("dragleave", onDragLeave, true);
       window.removeEventListener("dragop-drop", onCustomDrop);
     };
-  }, [loadContent, onAppleMailDrop, onAiAnalyze]);
+  }, [loadContent, onAppleMailDrop, onAiAnalyze, onLoadThread]);
 
   const handleAnalyzeClick = useCallback(() => {
     const lines = mailContent.split("\n");

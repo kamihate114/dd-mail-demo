@@ -152,7 +152,7 @@ export function RightSidebar({
                     exit={{ opacity: 0, y: -4 }}
                     transition={{ duration: 0.15 }}
                     className="absolute left-0 top-full z-20 mt-1.5 min-w-[140px] rounded-lg border border-border-default
-                               bg-surface-raised shadow-lg dark:bg-surface-raised py-1"
+                               bg-white shadow-lg dark:bg-[#1a1d26] dark:border-border-strong py-1"
                   >
                     {taskLists.map((list) => (
                       <button
@@ -160,8 +160,8 @@ export function RightSidebar({
                         onClick={() => { onSelectTaskList?.(list.id); setShowListPicker(false); }}
                         className={`w-full px-2.5 py-1.5 text-left text-[11px] transition-colors
                           ${list.id === activeTaskListId
-                            ? "bg-brand-blue/20 dark:bg-brand-blue/30 text-brand-blue font-medium"
-                            : "text-text-secondary hover:bg-border-default"
+                            ? "bg-brand-blue/20 dark:bg-brand-blue/30 text-brand-blue dark:text-brand-blue-light font-medium"
+                            : "text-text-primary hover:bg-border-default dark:hover:bg-white/5"
                           }`}
                       >
                         {list.title}
@@ -185,9 +185,9 @@ export function RightSidebar({
               value={newTodo}
               onChange={(e) => setNewTodo(e.target.value)}
               onKeyDown={handleKeyDown}
-              className="flex-1 rounded-md border border-border-default bg-transparent px-2 py-1.5
+              className="flex-1 rounded-md border border-border-default bg-surface dark:bg-white/5 px-2 py-1.5
                          text-xs text-text-primary placeholder:text-text-muted
-                         focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue/30
+                         focus:border-brand-blue focus:bg-brand-blue/5 dark:focus:bg-brand-blue/10 focus:outline-none focus:ring-2 focus:ring-brand-blue/40
                          transition-colors"
             />
             <button
@@ -228,7 +228,7 @@ export function RightSidebar({
                           exit={{ opacity: 0, height: 0, marginBottom: 0 }}
                           transition={{ duration: isCompleting ? 0.5 : 0.2 }}
                           className={`group flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors
-                            ${isSelected ? "rounded-b-none bg-brand-blue/30 dark:bg-brand-blue/40" : "hover:bg-border-default"}
+                            ${isSelected ? "rounded-b-none bg-brand-blue/20 dark:bg-brand-blue/45 ring-1 ring-brand-blue/50 dark:ring-brand-blue/70" : "hover:bg-border-default"}
                           `}
                         >
                           {/* Checkbox */}

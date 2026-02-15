@@ -138,6 +138,47 @@ export async function fetchOutlookMessages(
 }
 
 /**
+ * Fetch the last 3 messages from an Outlook conversation (most recent first).
+ * Returns formatted text for display in the editor.
+ */
+export async function fetchOutlookConversationLast3(
+  accessToken: string,
+  conversationId: string,
+): Promise<string> {
+  const params = new URLSearchParams({
+    $filter: `conversationId eq '${conversationId.replace(/'/g, "''")}'`,
+    $orderby: "receivedDateTime asc",
+    $top: "100",
+    $select: "id,subject,bodyPreview,body,from,receivedDateTime",
+  });
+  const res = await fetch(`${GRAPH_API}/messages?${params}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Outlook conversation error: ${res.status} ${text}`);
+  }
+  const data = await res.json();
+  const messages: MsGraphMessage[] = data.value || [];
+  // Take last 3 (most recent)
+  const last3 = messages.slice(-3);
+
+  const parts: string[] = [];
+  for (const msg of last3) {
+    const sender = msg.from?.emailAddress;
+    const senderName = sender?.name || sender?.address || "(不明)";
+    const senderAddr = sender?.address || "";
+    const bodyText = msg.body?.contentType === "html"
+      ? stripHtml(msg.body.content)
+      : (msg.body?.content || msg.bodyPreview || "");
+    const date = new Date(msg.receivedDateTime).toLocaleString("ja-JP");
+    const subject = msg.subject || "(件名なし)";
+    parts.push(`--- ${date} ---\n差出人: ${senderName} <${senderAddr}>\n件名: ${subject}\n\n${bodyText}`);
+  }
+  return parts.join("\n\n");
+}
+
+/**
  * Fetch Outlook mail folders.
  */
 export async function fetchOutlookFolders(accessToken: string): Promise<OutlookFolder[]> {

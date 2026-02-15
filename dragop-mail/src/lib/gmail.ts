@@ -288,6 +288,37 @@ export async function fetchGmailMessages(
   return { emails, nextPageToken };
 }
 
+/**
+ * Fetch the last 3 messages from a Gmail thread (most recent first).
+ * Returns formatted text for display in the editor.
+ */
+export async function fetchGmailThreadLast3(accessToken: string, threadId: string): Promise<string> {
+  const res = await fetch(`${GMAIL_API}/threads/${encodeURIComponent(threadId)}?format=full`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`Gmail thread error: ${res.status} ${body}`);
+  }
+  const thread = (await res.json()) as { messages?: GmailMessageFull[] };
+  const messages = thread.messages || [];
+  // Sort by internalDate ascending (oldest first), then take last 3
+  const sorted = [...messages].sort((a, b) => Number(a.internalDate) - Number(b.internalDate));
+  const last3 = sorted.slice(-3);
+
+  const parts: string[] = [];
+  for (const msg of last3) {
+    const headers = msg.payload.headers;
+    const from = getHeader(headers, "From");
+    const sender = extractSender(from);
+    const subject = getHeader(headers, "Subject") || "(件名なし)";
+    const body = extractBody(msg.payload);
+    const date = new Date(Number(msg.internalDate)).toLocaleString("ja-JP");
+    parts.push(`--- ${date} ---\n差出人: ${sender.name} <${sender.email}>\n件名: ${subject}\n\n${body}`);
+  }
+  return parts.join("\n\n");
+}
+
 /* ---------- Compose helpers ---------- */
 
 /**

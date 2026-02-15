@@ -8,10 +8,10 @@ import { RightSidebar, TodoItem } from "@/components/RightSidebar";
 import { MailPreview } from "@/components/MailPreview";
 import { ScheduleItem } from "@/components/DaySchedule";
 import { MOCK_EMAILS, EmailItem } from "@/lib/mockEmails";
-import { fetchGmailMessages, markGmailAsRead, archiveGmailMessage, fetchGmailLabels, GmailLabel, sendGmailMessage, createGmailDraft } from "@/lib/gmail";
+import { fetchGmailMessages, fetchGmailThreadLast3, markGmailAsRead, archiveGmailMessage, fetchGmailLabels, GmailLabel, sendGmailMessage, createGmailDraft } from "@/lib/gmail";
 import { fetchCalendarEvents, updateCalendarEvent, createCalendarEvent, deleteCalendarEvent } from "@/lib/gcalendar";
 import { fetchTasks, addTask, toggleTask, updateTask, fetchTaskLists } from "@/lib/gtasks";
-import { fetchOutlookMessages, fetchOutlookFolders, markOutlookAsRead, archiveOutlookMessage, OutlookFolder, sendOutlookMessage, createOutlookDraft } from "@/lib/outlook";
+import { fetchOutlookMessages, fetchOutlookConversationLast3, fetchOutlookFolders, markOutlookAsRead, archiveOutlookMessage, OutlookFolder, sendOutlookMessage, createOutlookDraft } from "@/lib/outlook";
 import { fetchMsCalendarEvents, createMsCalendarEvent, updateMsCalendarEvent, deleteMsCalendarEvent } from "@/lib/ms-calendar";
 import { fetchMsTasks, addMsTask, toggleMsTask, updateMsTask, fetchMsTaskLists } from "@/lib/ms-tasks";
 import { msalClearCache } from "@/lib/msal";
@@ -619,6 +619,24 @@ export default function Home() {
     }
   }, [selectedEmailId]);
 
+  // Load last 3 messages from thread when dropping email — provider-aware
+  const handleLoadThread = useCallback(async (threadId?: string, conversationId?: string): Promise<string | null> => {
+    const p = getActiveProvider();
+    const token = p ? getSavedTokenFor(p) : null;
+    if (!token || !p) return null;
+    try {
+      if (p === "gmail" && threadId) {
+        return await fetchGmailThreadLast3(token, threadId);
+      }
+      if (p === "outlook" && conversationId) {
+        return await fetchOutlookConversationLast3(token, conversationId);
+      }
+    } catch (err) {
+      console.warn("[Dragop] Thread load failed:", err);
+    }
+    return null;
+  }, []);
+
   // Select label/folder — fetch emails for that label — provider-aware
   const handleSelectLabel = useCallback(async (labelId: string) => {
     setActiveLabelId(labelId);
@@ -1166,6 +1184,7 @@ export default function Home() {
             >
               <MainEditor
                 onMailLoaded={handleMailLoaded}
+                onLoadThread={handleLoadThread}
                 onAppleMailDrop={handleAppleMailDrop}
                 aiState={aiState}
                 onAiAnalyze={handleAiAnalyze}
