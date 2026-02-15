@@ -11,16 +11,29 @@ function LoginContent() {
   const handleMicrosoftLogin = async () => {
     const supabase = createClient();
 
-    // Build the redirect URL with invitation token if present
+    // 招待トークン: URL に付与 + Cookie に退避（Supabase が redirectTo のクエリを落とす場合の保険）
     const redirectTo = token
-      ? `${window.location.origin}/auth/callback?token=${token}`
+      ? `${window.location.origin}/auth/callback?token=${encodeURIComponent(token)}`
       : `${window.location.origin}/auth/callback`;
+    if (token) {
+      document.cookie = `sb_invitation_token=${encodeURIComponent(token)}; path=/; max-age=600; SameSite=Lax`;
+    }
 
+    // サインイン時にメール・カレンダー・タスクの許可も一緒に取得（二度押し不要）
     await supabase.auth.signInWithOAuth({
       provider: "azure",
       options: {
         redirectTo,
-        scopes: "email profile openid",
+        scopes: [
+          "email",
+          "profile",
+          "openid",
+          "User.Read",
+          "Mail.ReadWrite",
+          "Mail.Send",
+          "Calendars.ReadWrite",
+          "Tasks.ReadWrite",
+        ].join(" "),
       },
     });
   };

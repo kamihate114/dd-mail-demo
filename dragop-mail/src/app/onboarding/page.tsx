@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { redirect } from "next/navigation";
 import OnboardingForm from "./OnboardingForm";
 
@@ -13,15 +14,26 @@ export default async function OnboardingPage() {
     redirect("/login");
   }
 
-  // Check if user already has a tenant
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("tenant_id")
-    .eq("id", user.id)
-    .single();
-
-  if (profile?.tenant_id) {
-    redirect("/");
+  // ログイン済み（tenant 登録済み）ならホームへ（admin で読んで RLS に左右されない）
+  try {
+    const admin = createAdminClient();
+    const { data: profile } = await admin
+      .from("profiles")
+      .select("tenant_id")
+      .eq("id", user.id)
+      .single();
+    if (profile?.tenant_id) {
+      redirect("/");
+    }
+  } catch {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("tenant_id")
+      .eq("id", user.id)
+      .single();
+    if (profile?.tenant_id) {
+      redirect("/");
+    }
   }
 
   return (
@@ -48,10 +60,10 @@ export default async function OnboardingPage() {
               </svg>
             </div>
             <h1 className="text-2xl font-bold text-text-primary mb-2">
-              会社を登録する
+              セットアップ
             </h1>
             <p className="text-sm text-text-secondary">
-              チームで使うための会社名を入力してください
+              アカウントの設定を完了してください
             </p>
           </div>
 

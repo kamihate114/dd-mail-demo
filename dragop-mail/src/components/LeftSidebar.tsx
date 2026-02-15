@@ -1,7 +1,8 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { Loader2 } from "lucide-react";
+import { Loader2, LayoutDashboard } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { MailLoginScreen } from "./MailLoginScreen";
 import { MailInbox } from "./MailInbox";
 import { EmailItem } from "@/lib/mockEmails";
@@ -14,13 +15,8 @@ interface LeftSidebarProps {
   emails: EmailItem[];
   selectedEmailId: string | null;
   onSelectEmail: (id: string | null) => void;
-  onLogin: (provider: "outlook" | "gmail") => void;
-  onGmailAuth: (accessToken: string) => void;
-  onOutlookAuth: (accessToken: string) => void;
+  onLoadMail: () => void;
   onLogout: () => void;
-  onFullLogout: (provider: "outlook" | "gmail") => void;
-  onRestoreSession: (provider: "outlook" | "gmail") => void;
-  savedProviders: ("outlook" | "gmail")[];
   logoutMessage?: string | null;
   onRefresh: () => void;
   onMarkAsRead: (id: string) => void;
@@ -40,21 +36,24 @@ interface LeftSidebarProps {
 export function LeftSidebar({
   isLoggedIn, isLoading, mailProvider, emails,
   selectedEmailId, onSelectEmail,
-  onLogin, onGmailAuth, onOutlookAuth, onLogout, onFullLogout, onRestoreSession, savedProviders,
+  onLoadMail, onLogout,
   logoutMessage,
   onRefresh, onMarkAsRead, onArchive, onLoadMore, isLoadingMore, hasMore, onSelectLabel,
   onSearch, isSearching, isRefreshing, labels, activeLabelId, activeLabelTotal,
 }: LeftSidebarProps) {
+  const router = useRouter();
+
   return (
     <aside className="flex h-full flex-col overflow-hidden p-4">
       {logoutMessage && (
         <div
           role="status"
-          className="mb-3 rounded-lg border border-green-500/30 bg-green-500/10 dark:bg-green-500/15 px-3 py-2 text-xs text-green-700 dark:text-green-300"
+          className="mb-3 shrink-0 rounded-lg border border-green-500/30 bg-green-500/10 dark:bg-green-500/15 px-3 py-2 text-xs text-green-700 dark:text-green-300"
         >
           {logoutMessage}
         </div>
       )}
+      <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
       <AnimatePresence mode="wait">
         {isLoading ? (
           <motion.div
@@ -93,12 +92,8 @@ export function LeftSidebar({
           <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden w-full">
             <MailLoginScreen
               key="login"
-              onLogin={onLogin}
-              onGmailAuth={onGmailAuth}
-              onOutlookAuth={onOutlookAuth}
-              onRestoreSession={onRestoreSession}
-              onFullLogout={onFullLogout}
-              savedProviders={savedProviders}
+              onLoadMail={onLoadMail}
+              loading={isLoading}
             />
           </div>
         ) : (
@@ -125,6 +120,20 @@ export function LeftSidebar({
           />
         )}
       </AnimatePresence>
+      </div>
+
+      {/* ログイン中は常にダッシュボードを表示。Admin でない場合はダッシュボード側で「管理者権限が必要」と表示 */}
+      {isLoggedIn && (
+        <div className="mt-auto shrink-0 border-t border-border-default pt-3">
+          <button
+            onClick={() => router.push("/dashboard")}
+            className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-text-secondary transition-colors hover:bg-indigo-500/[0.06] hover:text-indigo-600 dark:hover:bg-indigo-400/[0.08] dark:hover:text-indigo-400"
+          >
+            <LayoutDashboard className="h-4 w-4" />
+            <span className="font-medium">ダッシュボード</span>
+          </button>
+        </div>
+      )}
     </aside>
   );
 }

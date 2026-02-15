@@ -89,6 +89,28 @@ export async function msalTryGetToken(): Promise<string | null> {
 }
 
 /**
+ * 既存の Microsoft セッション（ブラウザのログイン状態）を使って
+ * ユーザー操作なしでトークンを取得する。
+ * 最初の Microsoft ログイン直後にメールを表示するために使用。
+ */
+export async function msalSsoSilent(loginHint: string): Promise<string | null> {
+  if (!HAS_MS_CLIENT_ID || !loginHint?.trim()) return null;
+  try {
+    const pca = await getMsalInstance();
+    const result = await pca.ssoSilent({
+      scopes: LOGIN_SCOPES,
+      loginHint: loginHint.trim(),
+    });
+    if (result?.account) {
+      console.log("[Dragop] MSAL SSO silent token acquired for:", result.account.username);
+    }
+    return result?.accessToken ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Clear all MSAL-related data from localStorage.
  * Call this when the user logs out of Outlook so that reload does not restore the session.
  */

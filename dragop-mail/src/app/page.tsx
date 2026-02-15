@@ -7,7 +7,7 @@ import { MainEditor } from "@/components/MainEditor";
 import { RightSidebar, TodoItem } from "@/components/RightSidebar";
 import { MailPreview } from "@/components/MailPreview";
 import { ScheduleItem } from "@/components/DaySchedule";
-import { MOCK_EMAILS, EmailItem } from "@/lib/mockEmails";
+import { EmailItem } from "@/lib/mockEmails";
 import { fetchGmailMessages, fetchGmailThreadLast3, markGmailAsRead, archiveGmailMessage, fetchGmailLabels, GmailLabel, sendGmailMessage, createGmailDraft } from "@/lib/gmail";
 import { fetchCalendarEvents, updateCalendarEvent, createCalendarEvent, deleteCalendarEvent } from "@/lib/gcalendar";
 import { fetchTasks, addTask, toggleTask, updateTask, fetchTaskLists } from "@/lib/gtasks";
@@ -15,6 +15,7 @@ import { fetchOutlookMessages, fetchOutlookConversationLast3, fetchOutlookFolder
 import { fetchMsCalendarEvents, createMsCalendarEvent, updateMsCalendarEvent, deleteMsCalendarEvent } from "@/lib/ms-calendar";
 import { fetchMsTasks, addMsTask, toggleMsTask, updateMsTask, fetchMsTaskLists } from "@/lib/ms-tasks";
 import { msalClearCache } from "@/lib/msal";
+import { createClient as createSupabaseClient } from "@/lib/supabase/client";
 import { TaskList } from "@/components/RightSidebar";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { ChevronRight } from "lucide-react";
@@ -39,16 +40,27 @@ function lsEmails(p: "outlook" | "gmail") { return `dragop-mail-${p}-emails-v2`;
 
 // Active provider key (which provider is currently displayed)
 const LS_ACTIVE = "dragop-mail-active-provider";
+// Supabase ユーザーID（別ユーザーでログインしたらメール状態をクリアするため）
+const LS_SUPABASE_USER_ID = "dragop-mail-supabase-user-id";
 
 function getSavedProviders(): ("outlook" | "gmail")[] {
   if (typeof window === "undefined") return [];
+  // アプリ内メールは Outlook のみ（Gmail は停止）
   const result: ("outlook" | "gmail")[] = [];
-  for (const p of ["gmail", "outlook"] as const) {
-    const token = localStorage.getItem(lsToken(p));
-    const emails = localStorage.getItem(lsEmails(p));
-    if (token || emails) result.push(p);
-  }
+  const p = "outlook" as const;
+  const token = localStorage.getItem(lsToken(p));
+  const emails = localStorage.getItem(lsEmails(p));
+  if (token || emails) result.push(p);
   return result;
+}
+
+function clearAllMailProviderData() {
+  for (const p of ["gmail", "outlook"] as const) {
+    localStorage.removeItem(lsToken(p));
+    localStorage.removeItem(lsEmails(p));
+  }
+  localStorage.removeItem(LS_ACTIVE);
+  sessionStorage.removeItem("dragop-msal-redirect-pending");
 }
 
 function getActiveProvider(): "outlook" | "gmail" | null {
@@ -130,8 +142,6 @@ export default function Home() {
   const [outlookHasMore, setOutlookHasMore] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
 
-  // Re-run savedProviders after full logout; show brief logout feedback
-  const [savedProvidersVersion, setSavedProvidersVersion] = useState(0);
   const [logoutMessage, setLogoutMessage] = useState<string | null>(null);
 
   // Reference to handleOutlookAuth for use in mount effect (defined later, assigned via ref)
@@ -139,22 +149,40 @@ export default function Home() {
   // Track provider for task list/tasks so we reset when switching Google ↔ Outlook
   const taskProviderRef = useRef<"outlook" | "gmail" | null>(null);
 
-  // On mount: リダイレクト戻りを処理してからキャッシュ復元
+  // On mount: Supabaseユーザー一致チェック → リダイレクト戻り処理 → キャッシュ復元
   const didRestore = useRef(false);
   useEffect(() => {
     if (didRestore.current) return;
     didRestore.current = true;
     migrateOldSession();
-    const hadRedirectPending =
-      typeof sessionStorage !== "undefined" && sessionStorage.getItem("dragop-msal-redirect-pending") === "1";
-    sessionStorage.removeItem("dragop-msal-redirect-pending");
-
-    const provider = getActiveProvider();
-    const token = provider ? getSavedTokenFor(provider) : null;
-    const cachedEmails = provider ? getSavedEmailsFor(provider) : [];
 
     (async () => {
-      // 1) OAuth リダイレクトから戻ったときだけ MSAL で自動ログイン（アカウント選択に戻ったあとのリロードでは自動復帰しない）
+      // 0) Supabase ユーザーが前回と違う場合はメール状態をすべてクリア（別ユーザーのGmail等が残らないように）
+      const supabase = createSupabaseClient();
+      const { data: { user: supabaseUser } } = await supabase.auth.getUser();
+      const storedUserId = typeof localStorage !== "undefined" ? localStorage.getItem(LS_SUPABASE_USER_ID) : null;
+      if (supabaseUser) {
+        if (storedUserId !== supabaseUser.id) {
+          clearAllMailProviderData();
+          localStorage.setItem(LS_SUPABASE_USER_ID, supabaseUser.id);
+        }
+      } else {
+        localStorage.removeItem(LS_SUPABASE_USER_ID);
+        clearAllMailProviderData();
+      }
+
+      const hadRedirectPending =
+        typeof sessionStorage !== "undefined" && sessionStorage.getItem("dragop-msal-redirect-pending") === "1";
+      sessionStorage.removeItem("dragop-msal-redirect-pending");
+
+      // Gmail はアプリ内で停止しているため、保存されていても破棄する
+      if (getActiveProvider() === "gmail") clearProviderSession("gmail");
+
+      const provider = getActiveProvider();
+      const token = provider ? getSavedTokenFor(provider) : null;
+      const cachedEmails = provider ? getSavedEmailsFor(provider) : [];
+
+      // 1) OAuth リダイレクトから戻ったときだけ MSAL で自動ログイン
       try {
         const { msalTryGetToken } = await import("@/lib/msal");
         const msToken = await msalTryGetToken();
@@ -167,27 +195,28 @@ export default function Home() {
         console.warn("[Dragop] MSAL redirect check failed:", err);
       }
 
-      // 2) MSAL トークンがなければキャッシュから復元して API で更新
-      if (provider && (cachedEmails.length > 0 || token)) {
-        setMailProvider(provider);
+      // 1b) Microsoft（Supabase）でログイン済みなのに Outlook トークンがない → 同じ Microsoft セッションでサイレント取得
+      if (supabaseUser?.email && outlookAuthRef.current && !token) {
+        try {
+          const { msalTryGetToken, msalSsoSilent } = await import("@/lib/msal");
+          const silentToken = await msalTryGetToken() ?? await msalSsoSilent(supabaseUser.email);
+          if (silentToken) {
+            console.log("[Dragop] Outlook token acquired from Microsoft session, loading mail");
+            outlookAuthRef.current(silentToken);
+            return;
+          }
+        } catch (err) {
+          console.warn("[Dragop] MSAL SSO silent failed:", err);
+        }
+      }
+
+      // 2) キャッシュから復元（Outlook のみ。Gmail は停止のためスキップ）
+      if (provider === "outlook" && (cachedEmails.length > 0 || token)) {
+        setMailProvider("outlook");
         setEmails(cachedEmails);
         setMailLoggedIn(true);
       }
-      if (provider === "gmail" && token) {
-        fetchGmailMessages(token, 20)
-          .then((result) => {
-            setEmails(result.emails);
-            setNextPageToken(result.nextPageToken);
-            saveSession("gmail", token, result.emails);
-            console.log("[Dragop] Refresh: loaded", result.emails.length, "emails");
-          })
-          .catch((err) => {
-            console.warn("[Dragop] Refresh failed (using cached):", err);
-          });
-        fetchGmailLabels(token)
-          .then((labels) => { if (labels.length > 0) setGmailLabels(labels); })
-          .catch(() => {});
-      } else if (provider === "outlook" && token) {
+      if (provider === "outlook" && token) {
         fetchOutlookMessages(token, 20)
           .then((result) => {
             setEmails(result.emails);
@@ -398,41 +427,7 @@ export default function Home() {
     loadTasks(listIdForLoad, mailProvider);
   }, [mailLoggedIn, mailProvider, loadTaskLists, loadTasks, activeTaskListId]);
 
-  // Mock login (Outlook or Gmail without CLIENT_ID)
-  const handleMailLogin = useCallback((provider: "outlook" | "gmail") => {
-    setMailProvider(provider);
-    setEmails(MOCK_EMAILS);
-    setMailLoggedIn(true);
-    saveSession(provider, null, MOCK_EMAILS);
-  }, []);
-
-  // Real Gmail OAuth login
-  const handleGmailAuth = useCallback(async (accessToken: string) => {
-    console.log("[Dragop] Gmail OAuth token received, length:", accessToken.length);
-    setMailLoading(true);
-    setMailProvider("gmail");
-    try {
-      const result = await fetchGmailMessages(accessToken, 20);
-      console.log("[Dragop] Fetched", result.emails.length, "emails from Gmail");
-      setEmails(result.emails);
-      setNextPageToken(result.nextPageToken);
-      setMailLoggedIn(true);
-      saveSession("gmail", accessToken, result.emails);
-      // Fetch labels in background
-      fetchGmailLabels(accessToken)
-        .then((labels) => { if (labels.length > 0) setGmailLabels(labels); })
-        .catch(() => {});
-    } catch (err: unknown) {
-      console.error("[Dragop] Gmail fetch error:", err);
-      const msg = err instanceof Error ? err.message : String(err);
-      alert(`メールの取得に失敗しました。\n\n${msg}`);
-      setMailProvider(null);
-    } finally {
-      setMailLoading(false);
-    }
-  }, []);
-
-  // Real Outlook OAuth login
+  // Outlook（Microsoft アカウント）でメール取得 — アプリの Microsoft ログインと同一
   const handleOutlookAuth = useCallback(async (accessToken: string) => {
     console.log("[Dragop] Outlook OAuth token received, length:", accessToken.length);
     setMailLoading(true);
@@ -470,7 +465,34 @@ export default function Home() {
   // Keep ref in sync so mount effect can call handleOutlookAuth
   outlookAuthRef.current = handleOutlookAuth;
 
-  // "アカウントを選択" — go back to login screen (keep saved sessions so user can restore without re-auth)
+  // Microsoft ログイン済みのとき、同じアカウントでメールを読み込む（サイレント → 必要ならリダイレクト）
+  const handleLoadMail = useCallback(async () => {
+    setMailLoading(true);
+    try {
+      const supabase = createSupabaseClient();
+      const { data: { user: supabaseUser } } = await supabase.auth.getUser();
+      const { msalTryGetToken, msalSsoSilent, msalLogin, HAS_MS_CLIENT_ID } = await import("@/lib/msal");
+      if (!HAS_MS_CLIENT_ID) {
+        alert("Microsoft の設定がありません。");
+        return;
+      }
+      const token = await msalTryGetToken() ?? (supabaseUser?.email ? await msalSsoSilent(supabaseUser.email) : null);
+      if (token && outlookAuthRef.current) {
+        await outlookAuthRef.current(token);
+        return;
+      }
+      sessionStorage.setItem("dragop-msal-redirect-pending", "1");
+      await msalLogin();
+    } catch (err) {
+      console.warn("[Dragop] Load mail failed:", err);
+      const msg = err instanceof Error ? err.message : String(err);
+      alert(`メールの読み込みに失敗しました。\n\n${msg}`);
+    } finally {
+      setMailLoading(false);
+    }
+  }, []);
+
+  // メールの接続を解除（再度「メールを読み込む」で取り直せる）
   const handleMailLogout = useCallback(() => {
     setMailLoggedIn(false);
     setMailProvider(null);
@@ -479,71 +501,10 @@ export default function Home() {
     setGmailLabels([]);
     setActiveLabelId("INBOX");
     localStorage.removeItem(LS_ACTIVE);
-    setLogoutMessage("アカウント選択に戻りました");
+    clearProviderSession("outlook");
+    msalClearCache();
+    setLogoutMessage("メールの接続を解除しました");
     setTimeout(() => setLogoutMessage(null), 3000);
-  }, []);
-
-  // Full logout — clears saved session for a specific provider
-  const handleFullLogout = useCallback((provider: "outlook" | "gmail") => {
-    clearProviderSession(provider);
-    if (provider === "outlook") msalClearCache();
-    setSavedProvidersVersion((v) => v + 1);
-    const label = provider === "gmail" ? "Gmail" : "Outlook";
-    setLogoutMessage(`${label}からログアウトしました`);
-    setTimeout(() => setLogoutMessage(null), 3000);
-    // If the current active session is this provider, also clear UI
-    if (mailProvider === provider) {
-      setMailLoggedIn(false);
-      setMailProvider(null);
-      setEmails([]);
-      setSelectedEmailId(null);
-      setGmailLabels([]);
-      setActiveLabelId("INBOX");
-    }
-  }, [mailProvider]);
-
-  // Quick restore from saved session (no re-auth) — provider-specific
-  const handleRestoreSession = useCallback((provider: "outlook" | "gmail") => {
-    const token = getSavedTokenFor(provider);
-    const cached = getSavedEmailsFor(provider);
-    if (cached.length > 0 || token) {
-      setMailProvider(provider);
-      setEmails(cached);
-      setMailLoggedIn(true);
-      localStorage.setItem(LS_ACTIVE, provider);
-      // Background refresh
-      if (provider === "gmail" && token) {
-        fetchGmailMessages(token, 20)
-          .then((result) => {
-            setEmails(result.emails);
-            setNextPageToken(result.nextPageToken);
-            saveSession("gmail", token, result.emails);
-          })
-          .catch(() => {});
-        fetchGmailLabels(token)
-          .then((labels) => { if (labels.length > 0) setGmailLabels(labels); })
-          .catch(() => {});
-      } else if (provider === "outlook" && token) {
-        fetchOutlookMessages(token, 20)
-          .then((result) => {
-            setEmails(result.emails);
-            setOutlookSkip(result.nextSkip);
-            setOutlookHasMore(result.hasMore);
-            saveSession("outlook", token, result.emails);
-          })
-          .catch(() => {});
-        fetchOutlookFolders(token)
-          .then((folders) => {
-            if (folders.length > 0) {
-              setGmailLabels(folders.map((f) => ({
-                id: f.id, name: f.name, type: f.type,
-                messagesTotal: f.messagesTotal, messagesUnread: f.messagesUnread,
-              })));
-            }
-          })
-          .catch(() => {});
-      }
-    }
   }, []);
 
   // Refresh emails
@@ -1002,14 +963,7 @@ export default function Home() {
     });
   }, []);
 
-  // Compute saved providers for login screen (show restore options); re-run after full logout via savedProvidersVersion
-  const [savedProviders, setSavedProviders] = useState<("outlook" | "gmail")[]>([]);
-
-  useEffect(() => {
-    setSavedProviders(getSavedProviders());
-  }, [mailLoggedIn, savedProvidersVersion]);
-
-  // Shared left sidebar props
+  // Shared left sidebar props（Microsoft 1ログインでメール表示するため、サイドバーの「ログイン」は廃止）
   const leftSidebarProps = {
     isLoggedIn: mailLoggedIn,
     isLoading: mailLoading,
@@ -1017,13 +971,8 @@ export default function Home() {
     emails,
     selectedEmailId,
     onSelectEmail: setSelectedEmailId,
-    onLogin: handleMailLogin,
-    onGmailAuth: handleGmailAuth,
-    onOutlookAuth: handleOutlookAuth,
+    onLoadMail: handleLoadMail,
     onLogout: handleMailLogout,
-    onFullLogout: handleFullLogout,
-    onRestoreSession: handleRestoreSession,
-    savedProviders,
     logoutMessage,
     onRefresh: handleRefresh,
     onMarkAsRead: handleMarkAsRead,
