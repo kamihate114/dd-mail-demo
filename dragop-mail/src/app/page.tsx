@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { LeftSidebar } from "@/components/LeftSidebar";
+import { SettingsPanel } from "@/components/SettingsPanel";
 import { MainEditor } from "@/components/MainEditor";
 import { RightSidebar, TodoItem } from "@/components/RightSidebar";
 import { MailPreview } from "@/components/MailPreview";
@@ -17,7 +18,6 @@ import { fetchMsTasks, addMsTask, toggleMsTask, updateMsTask, fetchMsTaskLists }
 import { msalClearCache } from "@/lib/msal";
 import { createClient as createSupabaseClient } from "@/lib/supabase/client";
 import { TaskList } from "@/components/RightSidebar";
-import { ThemeToggle } from "@/components/ThemeToggle";
 import { ChevronRight } from "lucide-react";
 import { Calendar } from "@/components/Calendar";
 import {
@@ -159,7 +159,10 @@ export default function Home() {
     (async () => {
       // 0) Supabase ユーザーが前回と違う場合はメール状態をすべてクリア（別ユーザーのGmail等が残らないように）
       const supabase = createSupabaseClient();
-      const { data: { user: supabaseUser } } = await supabase.auth.getUser();
+      const [{ data: { user: supabaseUser } }, { data: { session } }] = await Promise.all([
+        supabase.auth.getUser(),
+        supabase.auth.getSession(),
+      ]);
       const storedUserId = typeof localStorage !== "undefined" ? localStorage.getItem(LS_SUPABASE_USER_ID) : null;
       if (supabaseUser) {
         if (storedUserId !== supabaseUser.id) {
@@ -182,7 +185,18 @@ export default function Home() {
       const token = provider ? getSavedTokenFor(provider) : null;
       const cachedEmails = provider ? getSavedEmailsFor(provider) : [];
 
-      // 1) OAuth リダイレクトから戻ったときだけ MSAL で自動ログイン
+      // 1a) Supabase の Azure ログインで取得した provider_token をそのままメール用に使用（二重ログイン不要）
+      if (session?.provider_token && outlookAuthRef.current && !token) {
+        try {
+          console.log("[Dragop] Using Supabase provider_token for Outlook");
+          await outlookAuthRef.current(session.provider_token);
+          return;
+        } catch (err) {
+          console.warn("[Dragop] provider_token for Outlook failed:", err);
+        }
+      }
+
+      // 1b) OAuth リダイレクトから戻ったときだけ MSAL で自動ログイン
       try {
         const { msalTryGetToken } = await import("@/lib/msal");
         const msToken = await msalTryGetToken();
@@ -195,7 +209,7 @@ export default function Home() {
         console.warn("[Dragop] MSAL redirect check failed:", err);
       }
 
-      // 1b) Microsoft（Supabase）でログイン済みなのに Outlook トークンがない → 同じ Microsoft セッションでサイレント取得
+      // 1c) Microsoft（Supabase）でログイン済みなのに Outlook トークンがない → MSAL でサイレント取得
       if (supabaseUser?.email && outlookAuthRef.current && !token) {
         try {
           const { msalTryGetToken, msalSsoSilent } = await import("@/lib/msal");
@@ -240,6 +254,24 @@ export default function Home() {
           .catch(() => {});
       }
     })();
+  }, []);
+
+  // ログイン直後にセッションが確定したタイミングで provider_token があればメールを自動読み込み
+  useEffect(() => {
+    const supabase = createSupabaseClient();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event !== "SIGNED_IN" && event !== "INITIAL_SESSION") return;
+      if (!session?.provider_token || !outlookAuthRef.current) return;
+      const token = getActiveProvider() ? getSavedTokenFor(getActiveProvider()) : null;
+      if (token) return; // 既にメールトークンがあればスキップ
+      try {
+        console.log("[Dragop] Auth state change: using provider_token for Outlook");
+        await outlookAuthRef.current(session.provider_token);
+      } catch (err) {
+        console.warn("[Dragop] onAuthStateChange provider_token failed:", err);
+      }
+    });
+    return () => subscription.unsubscribe();
   }, []);
 
   // Mail preview state
@@ -465,12 +497,20 @@ export default function Home() {
   // Keep ref in sync so mount effect can call handleOutlookAuth
   outlookAuthRef.current = handleOutlookAuth;
 
-  // Microsoft ログイン済みのとき、同じアカウントでメールを読み込む（サイレント → 必要ならリダイレクト）
+  // Microsoft ログイン済みのとき、同じアカウントでメールを読み込む（provider_token → MSAL サイレント → 必要ならリダイレクト）
   const handleLoadMail = useCallback(async () => {
     setMailLoading(true);
     try {
       const supabase = createSupabaseClient();
-      const { data: { user: supabaseUser } } = await supabase.auth.getUser();
+      const [{ data: { user: supabaseUser } }, { data: { session } }] = await Promise.all([
+        supabase.auth.getUser(),
+        supabase.auth.getSession(),
+      ]);
+      // 1) Supabase の Azure ログインで取得したトークンがあればそれを使用（アプリで再ログイン不要）
+      if (session?.provider_token && outlookAuthRef.current) {
+        await outlookAuthRef.current(session.provider_token);
+        return;
+      }
       const { msalTryGetToken, msalSsoSilent, msalLogin, HAS_MS_CLIENT_ID } = await import("@/lib/msal");
       if (!HAS_MS_CLIENT_ID) {
         alert("Microsoft の設定がありません。");
@@ -987,10 +1027,14 @@ export default function Home() {
     labels: gmailLabels,
     activeLabelId,
     activeLabelTotal,
+    onOpenSettings: () => setShowSettings(true),
   };
 
   const showOriginalMailPanel = aiState.step !== "idle" && aiMailContent.trim().length > 0;
   const showFinalCheckPanel = aiState.step === "step3-loading" || aiState.step === "step3";
+
+  // 設定を同じ画面で表示（新しいページに飛ばない）
+  const [showSettings, setShowSettings] = useState(false);
 
   // Toggle state for unified side panel (元メール / 最終チェック)
   const [sideCardView, setSideCardView] = useState<"original" | "finalCheck">("original");
@@ -1057,6 +1101,9 @@ export default function Home() {
 
         {/* Center workspace (expands with side cards) */}
         <main className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-4 pt-14 pb-14 lg:px-6">
+          {showSettings ? (
+            <SettingsPanel onBack={() => setShowSettings(false)} />
+          ) : (
           <div className="mx-auto flex h-full w-full max-w-[1800px] justify-center gap-3 xl:gap-4">
             <AnimatePresence>
               {showOriginalMailPanel && (
@@ -1153,11 +1200,11 @@ export default function Home() {
             </div>
 
           </div>
+          )}
         </main>
 
-        {/* Buttons to the left of calendar (always visible, outside sidebar) */}
+        {/* カレンダー左: 右パネル開閉ボタンのみ（ライトモード切替は設定で変更） */}
         <div className="relative z-20 hidden shrink-0 flex-col items-center gap-2 px-2 pt-4 lg:flex">
-          <ThemeToggle />
           <button
             onClick={() => setRightOpen(!rightOpen)}
             className="rounded-lg p-1.5 text-text-muted hover:bg-border-default hover:text-text-primary transition-colors"

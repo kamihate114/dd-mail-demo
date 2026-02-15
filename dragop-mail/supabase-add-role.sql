@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   tenant_id uuid REFERENCES public.tenants(id) ON DELETE SET NULL,
   role text,
   seat_count integer,
+  display_name text,
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now()
 );
@@ -28,10 +29,12 @@ CREATE TABLE IF NOT EXISTS public.profiles (
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS tenant_id uuid REFERENCES public.tenants(id) ON DELETE SET NULL;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS role text;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS seat_count integer;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS display_name text;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT now();
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS updated_at timestamptz DEFAULT now();
 
 COMMENT ON COLUMN public.profiles.role IS 'admin: 会社作成者, member: 招待で参加';
+COMMENT ON COLUMN public.profiles.display_name IS '表示名（ユーザーネーム）。未設定時はメールの@前を表示';
 COMMENT ON COLUMN public.profiles.seat_count IS '契約席数（Stripe 用）。1〜9999';
 
 -- 3. invitations（招待URL用。登録時に1件作成し、ダッシュボードで表示）

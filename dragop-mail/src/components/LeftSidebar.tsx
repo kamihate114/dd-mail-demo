@@ -1,12 +1,14 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Loader2, LayoutDashboard } from "lucide-react";
+import { Loader2, LayoutDashboard, Settings, HelpCircle, LogOut, ChevronDown, ChevronUp } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { MailLoginScreen } from "./MailLoginScreen";
 import { MailInbox } from "./MailInbox";
 import { EmailItem } from "@/lib/mockEmails";
 import { GmailLabel } from "@/lib/gmail";
+import { createClient } from "@/lib/supabase/client";
 
 interface LeftSidebarProps {
   isLoggedIn: boolean;
@@ -31,6 +33,7 @@ interface LeftSidebarProps {
   labels: GmailLabel[];
   activeLabelId: string;
   activeLabelTotal: number | null;
+  onOpenSettings?: () => void;
 }
 
 export function LeftSidebar({
@@ -40,8 +43,61 @@ export function LeftSidebar({
   logoutMessage,
   onRefresh, onMarkAsRead, onArchive, onLoadMore, isLoadingMore, hasMore, onSelectLabel,
   onSearch, isSearching, isRefreshing, labels, activeLabelId, activeLabelTotal,
+  onOpenSettings,
 }: LeftSidebarProps) {
   const router = useRouter();
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [accountName, setAccountName] = useState<string | null>(null);
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+
+  // アカウント名（display_name またはメールの@前）と Admin 判定
+  useEffect(() => {
+    if (!isLoggedIn) {
+      setIsAdmin(false);
+      setAccountName(null);
+      return;
+    }
+    let cancelled = false;
+    async function checkAdmin(retryCount = 0) {
+      try {
+        const res = await fetch("/api/me/role", { cache: "no-store" });
+        const data = await res.json();
+        if (cancelled) return;
+        const name = data?.display_name ?? (data?.email ? data.email.split("@")[0] : null);
+        setAccountName(name ?? null);
+        if (data?.role === "admin") {
+          setIsAdmin(true);
+          return;
+        }
+        if (retryCount < 1) {
+          await new Promise((r) => setTimeout(r, 600));
+          if (!cancelled) checkAdmin(1);
+        } else {
+          setIsAdmin(false);
+        }
+      } catch {
+        if (!cancelled) setIsAdmin(false);
+      }
+    }
+    checkAdmin(0);
+    return () => { cancelled = true; };
+  }, [isLoggedIn]);
+
+  // 設定で表示名を更新したらアカウント名を再取得
+  useEffect(() => {
+    const handler = () => {
+      if (!isLoggedIn) return;
+      fetch("/api/me/role", { cache: "no-store" })
+        .then((r) => r.json())
+        .then((data) => {
+          const name = data?.display_name ?? (data?.email ? data.email.split("@")[0] : null);
+          setAccountName(name ?? null);
+        })
+        .catch(() => {});
+    };
+    window.addEventListener("account-updated", handler);
+    return () => window.removeEventListener("account-updated", handler);
+  }, [isLoggedIn]);
 
   return (
     <aside className="flex h-full flex-col overflow-hidden p-4">
@@ -122,15 +178,80 @@ export function LeftSidebar({
       </AnimatePresence>
       </div>
 
-      {/* ログイン中は常にダッシュボードを表示。Admin でない場合はダッシュボード側で「管理者権限が必要」と表示 */}
+      {/* ログイン中: アカウントをクリックでメニュー表示 */}
       {isLoggedIn && (
-        <div className="mt-auto shrink-0 border-t border-border-default pt-3">
+        <div className="mt-auto shrink-0 border-t border-border-default pt-2">
+          <AnimatePresence initial={false}>
+            {accountMenuOpen && (
+              <motion.nav
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="flex flex-col overflow-hidden"
+              >
+                {isAdmin && (
+                  <>
+                    <button
+                      onClick={() => { router.push("/dashboard"); setAccountMenuOpen(false); }}
+                      className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm text-text-secondary transition-colors hover:bg-white/[0.06] hover:text-text-primary dark:hover:bg-white/[0.04]"
+                    >
+                      <LayoutDashboard className="h-4 w-4 shrink-0 text-text-muted" />
+                      <span className="font-medium">ダッシュボード</span>
+                    </button>
+                    <div className="my-0.5 border-t border-border-default" />
+                  </>
+                )}
+                <button
+                  onClick={() => { onOpenSettings?.(); setAccountMenuOpen(false); }}
+                  className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm text-text-secondary transition-colors hover:bg-white/[0.06] hover:text-text-primary dark:hover:bg-white/[0.04]"
+                >
+                  <Settings className="h-4 w-4 shrink-0 text-text-muted" />
+                  <span className="font-medium">設定</span>
+                </button>
+                <div className="my-0.5 border-t border-border-default" />
+                <button
+                  onClick={() => setAccountMenuOpen(false)}
+                  className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm text-text-secondary transition-colors hover:bg-white/[0.06] hover:text-text-primary dark:hover:bg-white/[0.04]"
+                >
+                  <HelpCircle className="h-4 w-4 shrink-0 text-text-muted" />
+                  <span className="font-medium">ヘルプ</span>
+                </button>
+                <div className="my-0.5 border-t border-border-default" />
+                <button
+                  onClick={async () => {
+                    setAccountMenuOpen(false);
+                    onLogout();
+                    const supabase = createClient();
+                    await supabase.auth.signOut();
+                    router.push("/login");
+                  }}
+                  className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm text-text-secondary transition-colors hover:bg-white/[0.06] hover:text-text-primary dark:hover:bg-white/[0.04]"
+                >
+                  <LogOut className="h-4 w-4 shrink-0 text-text-muted" />
+                  <span className="font-medium">ログアウト</span>
+                </button>
+                <div className="my-0.5 border-t border-border-default" />
+              </motion.nav>
+            )}
+          </AnimatePresence>
           <button
-            onClick={() => router.push("/dashboard")}
-            className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-text-secondary transition-colors hover:bg-indigo-500/[0.06] hover:text-indigo-600 dark:hover:bg-indigo-400/[0.08] dark:hover:text-indigo-400"
+            type="button"
+            onClick={() => setAccountMenuOpen((o) => !o)}
+            className="mt-2 flex w-full items-center gap-3 rounded-lg px-3 py-2 text-text-primary transition-colors hover:bg-white/[0.06] dark:hover:bg-white/[0.04]"
+            aria-expanded={accountMenuOpen}
           >
-            <LayoutDashboard className="h-4 w-4" />
-            <span className="font-medium">ダッシュボード</span>
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-500 text-sm font-bold text-white">
+              {accountName ? accountName.slice(0, 1).toUpperCase() : "?"}
+            </div>
+            <p className="min-w-0 flex-1 truncate text-left text-sm font-medium">
+              {accountName ?? "—"}
+            </p>
+            {accountMenuOpen ? (
+              <ChevronUp className="h-4 w-4 shrink-0 text-text-muted" />
+            ) : (
+              <ChevronDown className="h-4 w-4 shrink-0 text-text-muted" />
+            )}
           </button>
         </div>
       )}

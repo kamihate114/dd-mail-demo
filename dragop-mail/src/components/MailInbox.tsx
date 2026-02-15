@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect, useCallback, useRef, Fragment } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { RefreshCw, FolderOpen, Filter, Archive, ChevronDown, Loader2, Search, X } from "lucide-react";
+import { RefreshCw, FolderOpen, Filter, Archive, Loader2, Search, X } from "lucide-react";
 import { EmailItem } from "@/lib/mockEmails";
 import { GmailLabel } from "@/lib/gmail";
 
@@ -206,18 +206,14 @@ export function MailInbox({
       transition={{ duration: 0.25 }}
       className="flex h-full flex-col min-h-0"
     >
-      {/* Account header */}
+      {/* Account header（Outlook 表示のみ。クリックでログアウトしない） */}
       <div className="shrink-0 flex items-center justify-between px-1 pb-2">
-        <button
-          onClick={onLogout}
-          className="flex items-center gap-2 rounded-md px-1.5 py-1 hover:bg-border-default transition-colors group"
-        >
+        <div className="flex items-center gap-2 rounded-md px-1.5 py-1">
           <div className={`h-2 w-2 rounded-full ${info.bg}`} />
-          <span className="text-xs font-semibold text-text-primary group-hover:text-brand-blue transition-colors">
+          <span className="text-xs font-semibold text-text-primary">
             {info.label}
           </span>
-          <ChevronDown className="h-2.5 w-2.5 text-text-muted" />
-        </button>
+        </div>
         <div className="flex items-center gap-0.5">
           <button
             onClick={() => setShowPanel(showPanel === "folder" ? null : "folder")}

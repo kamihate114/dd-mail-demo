@@ -22,6 +22,7 @@ import {
 import {
   fetchDashboardData,
   promoteToAdmin,
+  demoteToMember,
   removeMember,
   regenerateInviteUrl,
   type MemberRow,
@@ -111,11 +112,13 @@ function MemberTableRow({
   member,
   isSelf,
   onPromote,
+  onDemote,
   onRemove,
 }: {
   member: MemberRow;
   isSelf: boolean;
   onPromote: (id: string) => void;
+  onDemote: (id: string) => void;
   onRemove: (id: string) => void;
 }) {
   const isAdmin = member.role === "admin";
@@ -178,6 +181,15 @@ function MemberTableRow({
                 <ShieldCheck className="h-4 w-4" />
               </button>
             )}
+            {isAdmin && (
+              <button
+                onClick={() => onDemote(member.id)}
+                className="rounded-lg p-1.5 text-text-muted transition-colors hover:bg-slate-500/10 hover:text-slate-600 dark:hover:text-slate-400"
+                title="メンバーに降格"
+              >
+                <Shield className="h-4 w-4" />
+              </button>
+            )}
             <button
               onClick={() => onRemove(member.id)}
               className="rounded-lg p-1.5 text-text-muted transition-colors hover:bg-red-500/10 hover:text-red-500"
@@ -197,11 +209,13 @@ function MemberCard({
   member,
   isSelf,
   onPromote,
+  onDemote,
   onRemove,
 }: {
   member: MemberRow;
   isSelf: boolean;
   onPromote: (id: string) => void;
+  onDemote: (id: string) => void;
   onRemove: (id: string) => void;
 }) {
   const isAdmin = member.role === "admin";
@@ -250,6 +264,15 @@ function MemberCard({
               管理者に昇格
             </button>
           )}
+          {isAdmin && (
+            <button
+              onClick={() => onDemote(member.id)}
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-border-default px-3 py-1.5 text-xs font-medium text-text-secondary transition-colors hover:border-slate-500/30 hover:text-slate-600 dark:hover:text-slate-400"
+            >
+              <Shield className="h-3.5 w-3.5" />
+              メンバーに降格
+            </button>
+          )}
           <button
             onClick={() => onRemove(member.id)}
             className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-border-default px-3 py-1.5 text-xs font-medium text-text-secondary transition-colors hover:border-red-500/30 hover:text-red-500"
@@ -278,7 +301,7 @@ export default function DashboardPage() {
   // 確認モーダル
   const [confirmModal, setConfirmModal] = useState<{
     open: boolean;
-    type: "promote" | "remove";
+    type: "promote" | "demote" | "remove";
     memberId: string;
     memberEmail: string;
   }>({ open: false, type: "promote", memberId: "", memberEmail: "" });
@@ -343,6 +366,13 @@ export default function DashboardPage() {
     }
   };
 
+  const openDemoteModal = (id: string) => {
+    const member = data?.members.find((m) => m.id === id);
+    if (member) {
+      setConfirmModal({ open: true, type: "demote", memberId: id, memberEmail: member.email });
+    }
+  };
+
   const openRemoveModal = (id: string) => {
     const member = data?.members.find((m) => m.id === id);
     if (member) {
@@ -355,14 +385,13 @@ export default function DashboardPage() {
     try {
       if (confirmModal.type === "promote") {
         const result = await promoteToAdmin(confirmModal.memberId);
-        if (result.error) {
-          setError(result.error);
-        }
+        if (result.error) setError(result.error);
+      } else if (confirmModal.type === "demote") {
+        const result = await demoteToMember(confirmModal.memberId);
+        if (result.error) setError(result.error);
       } else {
         const result = await removeMember(confirmModal.memberId);
-        if (result.error) {
-          setError(result.error);
-        }
+        if (result.error) setError(result.error);
       }
       setConfirmModal({ ...confirmModal, open: false });
       await loadData();
@@ -439,14 +468,20 @@ export default function DashboardPage() {
           title={
             confirmModal.type === "promote"
               ? "管理者に昇格"
-              : "メンバーを削除"
+              : confirmModal.type === "demote"
+                ? "メンバーに降格"
+                : "メンバーを削除"
           }
           message={
             confirmModal.type === "promote"
               ? `${confirmModal.memberEmail} を管理者に昇格しますか？管理者はメンバーの管理が可能になります。`
-              : `${confirmModal.memberEmail} を組織から削除しますか？この操作は取り消せません。`
+              : confirmModal.type === "demote"
+                ? `${confirmModal.memberEmail} をメンバーに降格しますか？管理者権限が取り除かれます。`
+                : `${confirmModal.memberEmail} を組織から削除しますか？この操作は取り消せません。`
           }
-          confirmLabel={confirmModal.type === "promote" ? "昇格する" : "削除する"}
+          confirmLabel={
+            confirmModal.type === "promote" ? "昇格する" : confirmModal.type === "demote" ? "降格する" : "削除する"
+          }
           danger={confirmModal.type === "remove"}
           onConfirm={handleConfirm}
           onCancel={() => setConfirmModal({ ...confirmModal, open: false })}
@@ -626,6 +661,7 @@ export default function DashboardPage() {
                     member={member}
                     isSelf={member.id === userId}
                     onPromote={openPromoteModal}
+                    onDemote={openDemoteModal}
                     onRemove={openRemoveModal}
                   />
                 ))}
@@ -641,6 +677,7 @@ export default function DashboardPage() {
                 member={member}
                 isSelf={member.id === userId}
                 onPromote={openPromoteModal}
+                onDemote={openDemoteModal}
                 onRemove={openRemoveModal}
               />
             ))}

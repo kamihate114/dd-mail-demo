@@ -165,6 +165,50 @@ export async function promoteToAdmin(memberId: string): Promise<{ error?: string
   return {};
 }
 
+/** 管理者をメンバーに降格 */
+export async function demoteToMember(memberId: string): Promise<{ error?: string }> {
+  const ctx = await getAdminContext();
+  if (ctx.error || !ctx.admin || !ctx.profile) return { error: ctx.error ?? "エラー" };
+  if (ctx.profile.role !== "admin") return { error: "管理者権限が必要です" };
+
+  // 自分自身は降格不可
+  if (memberId === ctx.user!.id) {
+    return { error: "自分自身を降格することはできません" };
+  }
+
+  const { data: target } = await ctx.admin
+    .from("profiles")
+    .select("tenant_id, role")
+    .eq("id", memberId)
+    .single();
+
+  if (target?.tenant_id !== ctx.profile.tenant_id) {
+    return { error: "このメンバーは同じ組織に所属していません" };
+  }
+  if (target?.role !== "admin") {
+    return { error: "対象は既にメンバーです" };
+  }
+
+  // 同じテナントの管理者が自分含め2人以上いることを確認（最後の1人は降格不可）
+  const { data: admins } = await ctx.admin
+    .from("profiles")
+    .select("id")
+    .eq("tenant_id", ctx.profile.tenant_id)
+    .eq("role", "admin");
+  if ((admins?.length ?? 0) < 2) {
+    return { error: "管理者が1人だけのため降格できません" };
+  }
+
+  const { error } = await ctx.admin
+    .from("profiles")
+    .update({ role: "member" })
+    .eq("id", memberId);
+
+  if (error) return { error: "権限変更に失敗しました" };
+  revalidatePath("/dashboard");
+  return {};
+}
+
 /** メンバーを組織から削除 */
 export async function removeMember(memberId: string): Promise<{ error?: string }> {
   const ctx = await getAdminContext();
