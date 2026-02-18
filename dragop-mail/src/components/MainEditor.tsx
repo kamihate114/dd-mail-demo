@@ -12,6 +12,9 @@ interface DropDetail {
   types: string[];
   files: File[];
   data: Record<string, string>;
+  dropX?: number;
+  dropY?: number;
+  dropZoneId?: string | null;
 }
 
 function readFileAsText(file: File): Promise<string> {
@@ -92,6 +95,18 @@ export function MainEditor({
     "drop-default": null,
   });
 
+  // Drop effect state — sucked-in animation + ripple
+  const [dropEffect, setDropEffect] = useState<{
+    zone: DropZoneId;
+    emailSubject: string;
+    emailSender: string;
+    targetRect: { x: number; y: number; width: number; height: number };
+    startRect: { x: number; y: number };
+  } | null>(null);
+  const [rippleZone, setRippleZone] = useState<DropZoneId | null>(null);
+  // Deferred drop action — runs after sucked-in animation completes
+  const deferredDropAction = useRef<(() => void) | null>(null);
+
   const hasContent = mailContent.trim().length > 0;
   const aiActive = aiState.step !== "idle";
   const quickReplyActive = quickReplyLoading || quickReplyResult !== null;
@@ -154,7 +169,7 @@ export function MainEditor({
       }
       setQuickReplyResult(data);
       setQuickReplyDraftIndex(0);
-      setQuickReplyEditedDraft(data.draftReplies[0] || "");
+      setQuickReplyEditedDraft((data.draftReplies?.[0] ?? "").trim() || "");
       setQuickReplyEditedSubject(data.replySubject || "");
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -218,12 +233,19 @@ export function MainEditor({
     };
 
     const onCustomDrop = async (e: Event) => {
-      const currentHoveredZone = hoveredZoneRef.current;
+      const detail = (e as CustomEvent<DropDetail>).detail;
+      const dropX = detail.dropX ?? window.innerWidth / 2;
+      const dropY = detail.dropY ?? window.innerHeight / 2;
+      // ドロップ先zone: (1) layout.tsxのdropZoneId (2) hoveredZoneRef (3) 座標から判定
+      const zoneFromAttr = detail.dropZoneId && ["drop-yes", "drop-no", "drop-default"].includes(detail.dropZoneId)
+        ? (detail.dropZoneId as DropZoneId) : null;
+      const zoneFromCoords = getDropZoneFromPoint(dropX, dropY);
+      const currentHoveredZone = zoneFromAttr ?? hoveredZoneRef.current ?? zoneFromCoords;
+
       dragCounter.current = 0;
       setExternalDragOver(false);
       setIsEmailDrag(false);
       setHoveredZone(null);
-      const detail = (e as CustomEvent<DropDetail>).detail;
       if (detail.files.length > 0) return;
 
       const emailJson = detail.data["application/x-dragop-email"];
@@ -241,17 +263,64 @@ export function MainEditor({
             conversationId: email.conversationId,
           };
 
+          // Helper: get the zone element rect for the sucked-in animation target
+          const getZoneRect = (zoneId: DropZoneId) => {
+            const el = dropZoneRefs.current[zoneId];
+            if (!el) return { x: window.innerWidth / 2, y: window.innerHeight / 2, width: 200, height: 200 };
+            const rect = el.getBoundingClientRect();
+            return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2, width: rect.width, height: rect.height };
+          };
+
+          // Helper: trigger drop effect animation then run the action
+          const triggerDropEffect = (zoneId: DropZoneId, action: () => void) => {
+            const targetRect = getZoneRect(zoneId);
+            setDropEffect({
+              zone: zoneId,
+              emailSubject: email.subject,
+              emailSender: email.sender,
+              targetRect,
+              startRect: { x: dropX, y: dropY },
+            });
+            deferredDropAction.current = action;
+          };
+
           // Check if dropped on Yes or No zone → quick reply
           if (currentHoveredZone === "drop-yes" || currentHoveredZone === "drop-no") {
-            lastEmailRef.current = emailCtx;
-            const formatted = `件名: ${email.subject}\n差出人: ${email.sender} <${email.senderEmail}>\n\n${email.body}`;
-            setContentOrigin("sidebar");
-            loadContent(formatted, email.subject);
-            callQuickReplyApi(currentHoveredZone, emailCtx);
+            triggerDropEffect(currentHoveredZone, () => {
+              lastEmailRef.current = emailCtx;
+              const formatted = `件名: ${email.subject}\n差出人: ${email.sender} <${email.senderEmail}>\n\n${email.body}`;
+              setContentOrigin("sidebar");
+              loadContent(formatted, email.subject);
+              callQuickReplyApi(currentHoveredZone, emailCtx);
+            });
             return;
           }
 
-          // Default zone or no zone → existing analysis flow
+          // Default zone → sucked-in animation then existing analysis flow
+          if (currentHoveredZone === "drop-default") {
+            triggerDropEffect("drop-default", async () => {
+              if (onLoadThread && (email.threadId || email.conversationId)) {
+                try {
+                  const threadText = await onLoadThread(email.threadId, email.conversationId);
+                  if (threadText) {
+                    setContentOrigin("sidebar");
+                    loadContent(threadText, email.subject);
+                    lastEmailRef.current = emailCtx;
+                    onAiAnalyze(emailCtx);
+                    return;
+                  }
+                } catch { /* fall back to single email */ }
+              }
+              const formatted = `件名: ${email.subject}\n差出人: ${email.sender} <${email.senderEmail}>\n\n${email.body}`;
+              setContentOrigin("sidebar");
+              loadContent(formatted, email.subject);
+              lastEmailRef.current = emailCtx;
+              onAiAnalyze(emailCtx);
+            });
+            return;
+          }
+
+          // No specific zone hit — fall through to existing analysis (no animation)
           if (onLoadThread && (email.threadId || email.conversationId)) {
             try {
               const threadText = await onLoadThread(email.threadId, email.conversationId);
@@ -295,7 +364,7 @@ export function MainEditor({
       document.removeEventListener("dragleave", onDragLeave, true);
       window.removeEventListener("dragop-drop", onCustomDrop);
     };
-  }, [loadContent, onAppleMailDrop, onAiAnalyze, onLoadThread, callQuickReplyApi]);
+  }, [loadContent, onAppleMailDrop, onAiAnalyze, onLoadThread, callQuickReplyApi, getDropZoneFromPoint]);
 
   // Keep hoveredZone accessible in the drop handler via ref
   const hoveredZoneRef = useRef<DropZoneId | null>(null);
@@ -392,6 +461,48 @@ export function MainEditor({
     }
   }, [onQuickReplySaveDraft, quickReplyEmailCtx, quickReplyEditedSubject, quickReplyEditedDraft, handleAiReset]);
 
+  // Native onDrop for yes/no zones — フォールバック（layoutのdragop-dropが届かない場合）
+  const handleYesNoZoneDrop = useCallback((zoneId: "drop-yes" | "drop-no") => (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const emailJson = e.dataTransfer?.getData("application/x-dragop-email");
+    if (!emailJson) return;
+    try {
+      const email = JSON.parse(emailJson) as { id?: string; sender: string; senderEmail: string; subject: string; body: string; threadId?: string; conversationId?: string };
+      const emailCtx: AiEmailContext = {
+        sender: email.sender,
+        senderEmail: email.senderEmail,
+        subject: email.subject,
+        body: email.body,
+        emailId: email.id,
+        threadId: email.threadId,
+        conversationId: email.conversationId,
+      };
+      const getZoneRect = (z: DropZoneId) => {
+        const el = dropZoneRefs.current[z];
+        if (!el) return { x: window.innerWidth / 2, y: window.innerHeight / 2, width: 200, height: 200 };
+        const rect = el.getBoundingClientRect();
+        return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2, width: rect.width, height: rect.height };
+      };
+      setDropEffect({
+        zone: zoneId,
+        emailSubject: email.subject,
+        emailSender: email.sender,
+        targetRect: getZoneRect(zoneId),
+        startRect: { x: e.clientX, y: e.clientY },
+      });
+      deferredDropAction.current = () => {
+        lastEmailRef.current = emailCtx;
+        const formatted = `件名: ${email.subject}\n差出人: ${email.sender} <${email.senderEmail}>\n\n${email.body}`;
+        setContentOrigin("sidebar");
+        loadContent(formatted, email.subject);
+        callQuickReplyApi(zoneId, emailCtx);
+      };
+    } catch {
+      /* ignore parse error */
+    }
+  }, [loadContent, callQuickReplyApi]);
+
   // Select a different draft (for default zone with multiple)
   const selectDraft = useCallback((index: number) => {
     if (!quickReplyResult) return;
@@ -444,13 +555,17 @@ export function MainEditor({
               ref={(el) => { dropZoneRefs.current["drop-yes"] = el; }}
               id="drop-yes"
               data-drop-zone="drop-yes"
+              onDragOver={(e) => { e.preventDefault(); e.dataTransfer && (e.dataTransfer.dropEffect = "copy"); }}
+              onDrop={handleYesNoZoneDrop("drop-yes")}
               animate={{
                 scale: hoveredZone === "drop-yes" ? 1.03 : 1,
                 y: hoveredZone === "drop-yes" ? -4 : 0,
               }}
               transition={{ type: "spring", stiffness: 400, damping: 25 }}
+              style={{ "--zone-glow-color": "rgba(16, 185, 129, 0.25)" } as React.CSSProperties}
               className={`
                 flex w-[20%] flex-col items-center justify-center rounded-2xl border-2 border-dashed transition-colors duration-200
+                ${rippleZone === "drop-yes" ? "animate-zone-absorbed" : ""}
                 ${hoveredZone === "drop-yes"
                   ? "border-emerald-500 bg-emerald-500/10 shadow-lg shadow-emerald-500/10"
                   : "border-emerald-500/40 bg-emerald-500/5"
@@ -486,8 +601,10 @@ export function MainEditor({
                 y: hoveredZone === "drop-default" ? -4 : 0,
               }}
               transition={{ type: "spring", stiffness: 400, damping: 25 }}
+              style={{ "--zone-glow-color": "rgba(59, 130, 246, 0.25)" } as React.CSSProperties}
               className={`
                 flex w-[60%] flex-col items-center justify-center rounded-2xl border-2 border-dashed transition-colors duration-200
+                ${rippleZone === "drop-default" ? "animate-zone-absorbed" : ""}
                 ${hoveredZone === "drop-default"
                   ? "border-brand-blue bg-brand-blue/10 shadow-lg shadow-brand-blue/10"
                   : "border-brand-blue/40 bg-brand-blue/5"
@@ -554,13 +671,17 @@ export function MainEditor({
               ref={(el) => { dropZoneRefs.current["drop-no"] = el; }}
               id="drop-no"
               data-drop-zone="drop-no"
+              onDragOver={(e) => { e.preventDefault(); e.dataTransfer && (e.dataTransfer.dropEffect = "copy"); }}
+              onDrop={handleYesNoZoneDrop("drop-no")}
               animate={{
                 scale: hoveredZone === "drop-no" ? 1.03 : 1,
                 y: hoveredZone === "drop-no" ? -4 : 0,
               }}
               transition={{ type: "spring", stiffness: 400, damping: 25 }}
+              style={{ "--zone-glow-color": "rgba(244, 63, 94, 0.25)" } as React.CSSProperties}
               className={`
                 flex w-[20%] flex-col items-center justify-center rounded-2xl border-2 border-dashed transition-colors duration-200
+                ${rippleZone === "drop-no" ? "animate-zone-absorbed" : ""}
                 ${hoveredZone === "drop-no"
                   ? "border-rose-500 bg-rose-500/10 shadow-lg shadow-rose-500/10"
                   : "border-rose-500/40 bg-rose-500/5"
@@ -874,6 +995,145 @@ export function MainEditor({
             </div>
           </motion.div>
         )}
+      </AnimatePresence>
+
+      {/* ── Sucked-in drop effect overlay ── */}
+      <AnimatePresence>
+        {dropEffect && (
+          <motion.div
+            key="drop-sucked"
+            className="pointer-events-none fixed inset-0 z-[9999]"
+            initial={{ opacity: 1 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <motion.div
+              className={`absolute flex items-center gap-2 rounded-xl border px-4 py-3 shadow-2xl backdrop-blur-sm ${
+                dropEffect.zone === "drop-yes"
+                  ? "border-emerald-400/40 bg-emerald-50/90 dark:bg-emerald-950/80"
+                  : dropEffect.zone === "drop-no"
+                  ? "border-rose-400/40 bg-rose-50/90 dark:bg-rose-950/80"
+                  : "border-blue-400/40 bg-blue-50/90 dark:bg-blue-950/80"
+              }`}
+              style={{
+                left: dropEffect.startRect.x,
+                top: dropEffect.startRect.y,
+                transform: "translate(-50%, -50%)",
+                width: 220,
+              }}
+              initial={{
+                scale: 1,
+                opacity: 1,
+                x: 0,
+                y: 0,
+                rotate: 0,
+              }}
+              animate={{
+                x: dropEffect.targetRect.x - dropEffect.startRect.x,
+                y: dropEffect.targetRect.y - dropEffect.startRect.y,
+                scale: 0,
+                opacity: 0,
+                rotate: dropEffect.zone === "drop-yes" ? -6 : dropEffect.zone === "drop-no" ? 6 : 0,
+              }}
+              transition={{
+                duration: 0.45,
+                ease: [0.55, 0, 0.1, 1], // custom ease — fast start, decelerate
+              }}
+              onAnimationComplete={() => {
+                // Trigger ripple on the target zone
+                setRippleZone(dropEffect.zone);
+                setDropEffect(null);
+                // Execute the deferred action (API call, etc.)
+                if (deferredDropAction.current) {
+                  deferredDropAction.current();
+                  deferredDropAction.current = null;
+                }
+                // Clear ripple after animation
+                setTimeout(() => setRippleZone(null), 700);
+              }}
+            >
+              <Mail className={`h-4 w-4 shrink-0 ${
+                dropEffect.zone === "drop-yes" ? "text-emerald-600" :
+                dropEffect.zone === "drop-no" ? "text-rose-600" : "text-blue-600"
+              }`} />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-xs font-semibold text-text-primary">
+                  {dropEffect.emailSubject || "（件名なし）"}
+                </p>
+                <p className="truncate text-[10px] text-text-muted">
+                  {dropEffect.emailSender}
+                </p>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Ripple / ping effect on drop zones ── */}
+      <AnimatePresence>
+        {rippleZone && dropZoneRefs.current[rippleZone] && (() => {
+          const el = dropZoneRefs.current[rippleZone];
+          if (!el) return null;
+          const rect = el.getBoundingClientRect();
+          const rippleColor =
+            rippleZone === "drop-yes" ? "rgba(16, 185, 129, 0.35)"
+            : rippleZone === "drop-no" ? "rgba(244, 63, 94, 0.35)"
+            : "rgba(59, 130, 246, 0.35)";
+          return (
+            <motion.div
+              key={`ripple-${rippleZone}`}
+              className="pointer-events-none fixed z-[9998]"
+              style={{
+                left: rect.left + rect.width / 2,
+                top: rect.top + rect.height / 2,
+                transform: "translate(-50%, -50%)",
+              }}
+              initial={{ opacity: 1 }}
+              animate={{ opacity: 0 }}
+              transition={{ duration: 0.7 }}
+            >
+              {/* Ring 1 — fast */}
+              <motion.div
+                className="absolute rounded-full"
+                style={{
+                  border: `2px solid ${rippleColor}`,
+                  left: "50%",
+                  top: "50%",
+                  transform: "translate(-50%, -50%)",
+                }}
+                initial={{ width: 0, height: 0, opacity: 0.9 }}
+                animate={{ width: 200, height: 200, opacity: 0 }}
+                transition={{ duration: 0.55, ease: "easeOut" }}
+              />
+              {/* Ring 2 — slower, bigger */}
+              <motion.div
+                className="absolute rounded-full"
+                style={{
+                  border: `1.5px solid ${rippleColor}`,
+                  left: "50%",
+                  top: "50%",
+                  transform: "translate(-50%, -50%)",
+                }}
+                initial={{ width: 0, height: 0, opacity: 0.6 }}
+                animate={{ width: 300, height: 300, opacity: 0 }}
+                transition={{ duration: 0.7, ease: "easeOut", delay: 0.08 }}
+              />
+              {/* Center flash */}
+              <motion.div
+                className="absolute rounded-full"
+                style={{
+                  background: rippleColor,
+                  left: "50%",
+                  top: "50%",
+                  transform: "translate(-50%, -50%)",
+                }}
+                initial={{ width: 12, height: 12, opacity: 0.8 }}
+                animate={{ width: 40, height: 40, opacity: 0 }}
+                transition={{ duration: 0.35, ease: "easeOut" }}
+              />
+            </motion.div>
+          );
+        })()}
       </AnimatePresence>
     </div>
   );

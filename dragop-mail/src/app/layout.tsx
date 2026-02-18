@@ -56,7 +56,10 @@ export default function RootLayout({
                 var detail = {
                   types: Array.from(dt.types),
                   files: [],
-                  data: {}
+                  data: {},
+                  dropX: e.clientX,
+                  dropY: e.clientY,
+                  dropZoneId: dropZone ? dropZone.getAttribute("data-drop-zone") : null
                 };
                 for (var i = 0; i < dt.files.length; i++) {
                   detail.files.push(dt.files[i]);

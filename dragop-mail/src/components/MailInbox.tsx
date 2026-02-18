@@ -452,8 +452,37 @@ export function MailInbox({
                       de.dataTransfer.setData("application/x-dragop-email", payload);
                       de.dataTransfer.setData("text/plain", email.body);
                       de.dataTransfer.effectAllowed = "copy";
+
+                      // Custom drag image — pickup animation feel
+                      const ghost = document.createElement("div");
+                      ghost.style.cssText = `
+                        position: fixed; top: -9999px; left: -9999px; z-index: 99999;
+                        width: 220px; padding: 10px 14px;
+                        background: var(--surface-raised, #fff);
+                        border: 1px solid rgba(59,130,246,0.3);
+                        border-radius: 12px;
+                        box-shadow: 0 20px 40px -8px rgba(0,0,0,0.25), 0 8px 16px -4px rgba(59,130,246,0.15);
+                        transform: scale(1.05) rotate(2deg);
+                        opacity: 0.92;
+                        font-family: inherit;
+                        pointer-events: none;
+                      `;
+                      ghost.innerHTML = `
+                        <div style="font-size:11px;font-weight:600;color:var(--text-primary,#1F2937);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${email.sender}</div>
+                        <div style="font-size:11px;color:var(--text-secondary,#6B7280);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${email.subject}</div>
+                      `;
+                      document.body.appendChild(ghost);
+                      dragImageRef.current = ghost;
+                      de.dataTransfer.setDragImage(ghost, 110, 24);
                     }}
-                    onDragEnd={() => setDraggingId(null)}
+                    onDragEnd={() => {
+                      setDraggingId(null);
+                      // Clean up custom ghost
+                      if (dragImageRef.current) {
+                        dragImageRef.current.remove();
+                        dragImageRef.current = null;
+                      }
+                    }}
                     className={`
                       group cursor-grab rounded-lg border relative
                       px-3 py-2.5 transition-all duration-150
@@ -462,7 +491,7 @@ export function MailInbox({
                         ? "border-brand-blue bg-brand-blue/5 dark:bg-brand-blue/10 shadow-sm"
                         : "border-border-default bg-surface-raised/50 dark:bg-surface-raised hover:border-brand-blue/40 hover:shadow-sm"
                       }
-                      ${draggingId === email.id ? "opacity-40 scale-95" : ""}
+                      ${draggingId === email.id ? "opacity-30 scale-[0.92] blur-[1px]" : ""}
                     `}
                   >
                     <div className="flex items-start justify-between gap-2">

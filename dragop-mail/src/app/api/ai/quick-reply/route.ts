@@ -8,7 +8,7 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-// GPT-5 nano — 高速・低コストのクイック返信向け
+// GPT-5 nano を必ず使用
 const MODEL = "gpt-5-nano";
 
 function stripCodeFence(text: string): string {
@@ -45,32 +45,64 @@ export async function POST(request: NextRequest): Promise<NextResponse<QuickRepl
   }
 
   const startedAt = Date.now();
+  const systemPrompt = getQuickReplySystemPrompt();
+  const userMessage = buildQuickReplyUserMessage(dropZone, emailContext);
 
-  try {
-    const systemPrompt = getQuickReplySystemPrompt();
-    const userMessage = buildQuickReplyUserMessage(dropZone, emailContext);
-
+  async function callWithModel(model: string) {
     const completion = await openai.chat.completions.create({
-      model: MODEL,
+      model,
+      reasoning_effort: "low",
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userMessage },
       ],
-      max_completion_tokens: 2000,
+      max_completion_tokens: 4000,
     } as OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming) as ChatCompletion;
 
     const choice = completion.choices[0];
+    const finishReason = choice?.finish_reason ?? "unknown";
     const content = choice?.message?.content || "{}";
 
-    const parsed = JSON.parse(stripCodeFence(content)) as QuickReplyResponse;
+    const raw = JSON.parse(stripCodeFence(content)) as Record<string, unknown>;
+    let draftReplies: string[] = Array.isArray(raw.draftReplies) ? raw.draftReplies as string[]
+      : Array.isArray(raw.draft_replies) ? raw.draft_replies as string[]
+      : Array.isArray(raw.replies) ? raw.replies as string[]
+      : (raw.content && typeof raw.content === "string") ? [raw.content]
+      : [];
+    // 空の場合は summary や content をフォールバック
+    if (draftReplies.length === 0 && raw.summary && typeof raw.summary === "string" && raw.summary.trim()) {
+      draftReplies = [raw.summary.trim()];
+    }
+    // まだ空の場合は同モデルで本文のみ再生成（gpt-5-nano固定）
+    if (draftReplies.length === 0) {
+      console.warn(`[AI Quick Reply] empty draftReplies (finish_reason=${finishReason}). raw=${JSON.stringify(raw).slice(0, 400)}`);
+      const fallback = await openai.chat.completions.create({
+        model,
+        reasoning_effort: "low",
+        messages: [
+          { role: "system", content: "あなたは日本語ビジネスメールの返信アシスタントです。本文のみを出力してください。" },
+          { role: "user", content: `${userMessage}\n\n出力条件:\n- 返信本文のみ\n- 2〜6文\n- 丁寧なです・ます調` },
+        ],
+        max_completion_tokens: 2000,
+      } as OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming) as ChatCompletion;
+      const fallbackText = fallback.choices[0]?.message?.content?.trim() || "";
+      if (fallbackText) {
+        draftReplies = [fallbackText];
+      }
+    }
+    const parsed: QuickReplyResponse = {
+      summary: (raw.summary as string) || "",
+      replySubject: (raw.replySubject as string) || (raw.reply_subject as string) || `Re: ${emailContext.subject}`,
+      draftReplies,
+      tone: (raw.tone as string) || (dropZone === "drop-yes" ? "快諾・前向き" : dropZone === "drop-no" ? "丁寧なお断り" : "要約・おまかせ"),
+    };
 
-    // Ensure required fields
-    parsed.summary = parsed.summary || "";
-    parsed.replySubject = parsed.replySubject || `Re: ${emailContext.subject}`;
-    parsed.draftReplies = parsed.draftReplies || [];
-    parsed.tone = parsed.tone || "";
+    return parsed;
+  }
 
+  try {
+    const parsed = await callWithModel(MODEL);
     console.log(`[AI Quick Reply] dropZone=${dropZone} ok in ${Date.now() - startedAt}ms, replies=${parsed.draftReplies.length}`);
     return NextResponse.json(parsed);
   } catch (err) {
