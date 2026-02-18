@@ -102,3 +102,22 @@ export const AI_INITIAL_STATE: AiWorkflowState = {
   step3Result: null,
   error: null,
 };
+
+/* ================================================================
+   Quick Reply (Drop Zone) Types
+   ================================================================ */
+
+export type DropZoneId = "drop-yes" | "drop-no" | "drop-default";
+
+export interface QuickReplyRequest {
+  dropZone: DropZoneId;
+  emailContext: AiEmailContext;
+}
+
+export interface QuickReplyResponse {
+  summary: string;            // 3-line summary
+  replySubject: string;       // Reply subject
+  draftReplies: string[];     // 1 draft for yes/no, multiple for default
+  tone: string;               // Description of tone used
+  error?: string;
+}

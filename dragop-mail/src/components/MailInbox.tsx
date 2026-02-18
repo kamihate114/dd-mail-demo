@@ -124,6 +124,7 @@ export function MailInbox({
   isRefreshing, labels, activeLabelId, activeLabelTotal,
 }: MailInboxProps) {
   const [draggingId, setDraggingId] = useState<string | null>(null);
+  const dragImageRef = useRef<HTMLDivElement | null>(null);
   const [showPanel, setShowPanel] = useState<"folder" | "filter" | "search" | null>(null);
   const [activeFilters, setActiveFilters] = useState<Set<FilterId>>(new Set());
   const [searchQuery, setSearchQuery] = useState("");

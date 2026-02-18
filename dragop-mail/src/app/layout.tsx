@@ -47,8 +47,10 @@ export default function RootLayout({
               }, true);
               document.addEventListener("drop", function(e) {
                 e.preventDefault();
-                var zone = e.target.closest ? e.target.closest("[data-dragop-zone]") : null;
-                if (!zone) return;
+                var target = e.target;
+                var zone = target && target.closest ? target.closest("[data-dragop-zone]") : null;
+                var dropZone = target && target.closest ? target.closest("[data-drop-zone]") : null;
+                if (!zone && !dropZone) return;
                 var dt = e.dataTransfer;
                 if (!dt) return;
                 var detail = {

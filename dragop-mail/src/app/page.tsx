@@ -277,7 +277,8 @@ export default function Home() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event !== "SIGNED_IN" && event !== "INITIAL_SESSION") return;
       if (!session?.provider_token || !outlookAuthRef.current) return;
-      const token = getActiveProvider() ? getSavedTokenFor(getActiveProvider()) : null;
+      const activeProvider = getActiveProvider();
+      const token = activeProvider ? getSavedTokenFor(activeProvider) : null;
       if (token) return; // 既にメールトークンがあればスキップ
       try {
         console.log("[Dragop] Auth state change: using provider_token for Outlook");
@@ -1018,6 +1019,29 @@ export default function Home() {
     });
   }, []);
 
+  // Quick reply send/draft (reuses existing Outlook/Gmail send infrastructure)
+  const handleQuickReplySend = useCallback(async (to: string, subject: string, body: string, emailId?: string) => {
+    const p = getActiveProvider();
+    const token = p ? getSavedTokenFor(p) : null;
+    if (!token || !p) throw new Error("メールを送信するにはログインが必要です。");
+    if (p === "gmail") {
+      await sendGmailMessage(token, to, subject, body);
+    } else {
+      await sendOutlookMessage(token, to, subject, body, emailId);
+    }
+  }, []);
+
+  const handleQuickReplySaveDraft = useCallback(async (to: string, subject: string, body: string, emailId?: string) => {
+    const p = getActiveProvider();
+    const token = p ? getSavedTokenFor(p) : null;
+    if (!token || !p) throw new Error("下書きを保存するにはログインが必要です。");
+    if (p === "gmail") {
+      await createGmailDraft(token, to, subject, body);
+    } else {
+      await createOutlookDraft(token, to, subject, body, emailId);
+    }
+  }, []);
+
   // Shared left sidebar props（Microsoft 1ログインでメール表示するため、サイドバーの「ログイン」は廃止）
   const leftSidebarProps = {
     isLoggedIn: mailLoggedIn,
@@ -1211,6 +1235,8 @@ export default function Home() {
                 onAiReset={handleAiReset}
                 onAiBack={handleAiBack}
                 onMailContentChange={setAiMailContent}
+                onQuickReplySend={handleQuickReplySend}
+                onQuickReplySaveDraft={handleQuickReplySaveDraft}
               />
             </div>
 
