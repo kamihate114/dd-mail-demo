@@ -8,19 +8,6 @@
 
 ---
 
-## デモの動かし方
-
-APIキー不要のモックモードで動作します。
-
-```bash
-npm install
-npm run dev   # http://localhost:3010
-```
-
-> `.env.local` は不要です。Supabase・OpenAI なしで全機能が動作します。
-
----
-
 ## 機能概要
 
 ### 1. メール一覧（左サイドバー）
