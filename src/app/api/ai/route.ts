@@ -17,6 +17,10 @@ import {
   buildStep3Instruction,
 } from "@/lib/ai-prompts";
 
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY ?? "dummy-key-for-build",
+});
+
 // GPT-5 mini — 全ステップ共通
 const MODEL = "gpt-5-mini";
 
@@ -101,10 +105,6 @@ export async function POST(request: NextRequest): Promise<NextResponse<AiApiResp
       { status: 500 },
     );
   }
-
-  const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-  });
 
   let body: AiApiRequest;
   try {

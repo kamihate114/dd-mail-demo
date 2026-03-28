@@ -4,6 +4,10 @@ import type { ChatCompletion } from "openai/resources/chat/completions";
 import { QuickReplyRequest, QuickReplyResponse, DropZoneId } from "@/lib/ai-types";
 import { getQuickReplySystemPrompt, buildQuickReplyUserMessage } from "@/lib/quick-reply-prompts";
 
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY ?? "dummy-key-for-build",
+});
+
 // GPT-5 nano を必ず使用
 const MODEL = "gpt-5-nano";
 
@@ -21,10 +25,6 @@ export async function POST(request: NextRequest): Promise<NextResponse<QuickRepl
       { status: 500 },
     );
   }
-
-  const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-  });
 
   let body: QuickReplyRequest;
   try {
